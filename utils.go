@@ -76,11 +76,11 @@ func LoadSavedata(fname string) ([]byte, error) {
 
 func ConnStatusString(status int) (s string) {
 	switch status {
-	case CONNECTION_NONE:
+	case ConnectionNone:
 		s = "CONNECTION_NONE"
-	case CONNECTION_TCP:
+	case ConnectionTCP:
 		s = "CONNECTION_TCP"
-	case CONNECTION_UDP:
+	case ConnectionUDP:
 		s = "CONNECTION_UDP"
 	}
 	return

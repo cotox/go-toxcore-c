@@ -66,7 +66,7 @@ func (this *Tox) CallbackConferenceInviteAdd(cbfn cb_conference_invite_ftype, us
 //export callbackConferenceMessageWrapperForC
 func callbackConferenceMessageWrapperForC(m *C.Tox, a0 C.uint32_t, a1 C.uint32_t, mtype C.TOX_MESSAGE_TYPE, a2 *C.int8_t, a3 C.size_t, a4 unsafe.Pointer) {
 	var this = cbUserDatas.get(m)
-	if int(mtype) == MESSAGE_TYPE_NORMAL {
+	if int(mtype) == MessageTypeNormal {
 		for cbfni, ud := range this.cb_conference_messages {
 			cbfn := *(*cb_conference_message_ftype)(cbfni)
 			message := C.GoStringN((*C.char)((*C.int8_t)(a2)), C.int(a3))
@@ -221,7 +221,7 @@ func (this *Tox) ConferenceDelete(groupNumber uint32) (int, error) {
 func (this *Tox) ConferencePeerGetName(groupNumber uint32, peerNumber uint32) (string, error) {
 	var _gn = C.uint32_t(groupNumber)
 	var _pn = C.uint32_t(peerNumber)
-	var _name [MAX_NAME_LENGTH]byte
+	var _name [MaxNameLength]byte
 
 	var cerr C.TOX_ERR_CONFERENCE_PEER_QUERY
 	r := C.tox_conference_peer_get_name(this.toxcore, _gn, _pn, (*C.uint8_t)(&_name[0]), &cerr)
@@ -235,7 +235,7 @@ func (this *Tox) ConferencePeerGetName(groupNumber uint32, peerNumber uint32) (s
 func (this *Tox) ConferencePeerGetPublicKey(groupNumber uint32, peerNumber uint32) (string, error) {
 	var _gn = C.uint32_t(groupNumber)
 	var _pn = C.uint32_t(peerNumber)
-	var _pubkey [PUBLIC_KEY_SIZE]byte
+	var _pubkey [PublicKeySize]byte
 
 	var cerr C.TOX_ERR_CONFERENCE_PEER_QUERY
 	r := C.tox_conference_peer_get_public_key(this.toxcore, _gn, _pn, (*C.uint8_t)(&_pubkey[0]), &cerr)
@@ -312,8 +312,8 @@ func (this *Tox) ConferenceSendMessage(groupNumber uint32, mtype int, message st
 	var _length = C.size_t(len(message))
 
 	switch mtype {
-	case MESSAGE_TYPE_NORMAL:
-	case MESSAGE_TYPE_ACTION:
+	case MessageTypeNormal:
+	case MessageTypeAction:
 	default:
 		return 0, toxerrf("Invalid message type: %d", mtype)
 	}
@@ -337,7 +337,7 @@ func (this *Tox) ConferenceSetTitle(groupNumber uint32, title string) (int, erro
 	var cerr C.TOX_ERR_CONFERENCE_TITLE
 	r := C.tox_conference_set_title(this.toxcore, _gn, (*C.uint8_t)(&_title[0]), _length, &cerr)
 	if r == false {
-		if len(title) > MAX_NAME_LENGTH {
+		if len(title) > MaxNameLength {
 			return 0, errors.New("title too long")
 		}
 		return 0, toxerrf("set title failed:%d", cerr)
@@ -351,7 +351,7 @@ func (this *Tox) ConferenceSetTitle(groupNumber uint32, title string) (int, erro
 
 func (this *Tox) ConferenceGetTitle(groupNumber uint32) (string, error) {
 	var _gn = C.uint32_t(groupNumber)
-	var _title [MAX_NAME_LENGTH]byte
+	var _title [MaxNameLength]byte
 
 	r := C.tox_conference_get_title(this.toxcore, _gn, (*C.uint8_t)(&_title[0]), nil)
 	if r == false {

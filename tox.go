@@ -5,8 +5,6 @@ package tox
 #include <string.h>
 #include <tox/tox.h>
 
-//////
-
 void callbackFriendRequestWrapperForC(Tox *, uint8_t *, uint8_t *, uint16_t, void*);
 void callbackFriendMessageWrapperForC(Tox *, uint32_t, int, uint8_t*, uint32_t, void*);
 void callbackFriendNameWrapperForC(Tox *, uint32_t, uint8_t*, uint32_t, void*);
@@ -118,7 +116,7 @@ var cbUserDatas = newUserData()
 func callbackFriendRequestWrapperForC(m *C.Tox, a0 *C.uint8_t, a1 *C.uint8_t, a2 C.uint16_t, a3 unsafe.Pointer) {
 	var this = cbUserDatas.get(m)
 	for cbfni, ud := range this.cb_friend_requests {
-		pubkey_b := C.GoBytes(unsafe.Pointer(a0), C.int(PUBLIC_KEY_SIZE))
+		pubkey_b := C.GoBytes(unsafe.Pointer(a0), C.int(PublicKeySize))
 		pubkey := hex.EncodeToString(pubkey_b)
 		pubkey = strings.ToUpper(pubkey)
 		message_b := C.GoBytes(unsafe.Pointer(a1), C.int(a2))
@@ -128,10 +126,12 @@ func callbackFriendRequestWrapperForC(m *C.Tox, a0 *C.uint8_t, a1 *C.uint8_t, a2
 	}
 }
 
+// CallbackFriendRequest sets event handler which is triggered when a friend request is received.
 func (this *Tox) CallbackFriendRequest(cbfn cb_friend_request_ftype, userData interface{}) {
-	this.CallbackFriendRequestAdd(cbfn, userData)
+	this.callbackFriendRequestAdd(cbfn, userData)
 }
-func (this *Tox) CallbackFriendRequestAdd(cbfn cb_friend_request_ftype, userData interface{}) {
+
+func (this *Tox) callbackFriendRequestAdd(cbfn cb_friend_request_ftype, userData interface{}) {
 	cbfnp := (unsafe.Pointer)(&cbfn)
 	if _, ok := this.cb_friend_requests[cbfnp]; ok {
 		return
@@ -152,10 +152,12 @@ func callbackFriendMessageWrapperForC(m *C.Tox, a0 C.uint32_t, mtype C.int,
 	}
 }
 
+// CallbackFriendMessage sets event handler which is triggered when a message from a friend is received.
 func (this *Tox) CallbackFriendMessage(cbfn cb_friend_message_ftype, userData interface{}) {
-	this.CallbackFriendMessageAdd(cbfn, userData)
+	this.callbackFriendMessageAdd(cbfn, userData)
 }
-func (this *Tox) CallbackFriendMessageAdd(cbfn cb_friend_message_ftype, userData interface{}) {
+
+func (this *Tox) callbackFriendMessageAdd(cbfn cb_friend_message_ftype, userData interface{}) {
 	cbfnp := (unsafe.Pointer)(&cbfn)
 	if _, ok := this.cb_friend_messages[cbfnp]; ok {
 		return
@@ -175,10 +177,12 @@ func callbackFriendNameWrapperForC(m *C.Tox, a0 C.uint32_t, a1 *C.uint8_t, a2 C.
 	}
 }
 
+// CallbackFriendName sets event handler which is triggered when a friend changes their name.
 func (this *Tox) CallbackFriendName(cbfn cb_friend_name_ftype, userData interface{}) {
-	this.CallbackFriendNameAdd(cbfn, userData)
+	this.callbackFriendNameAdd(cbfn, userData)
 }
-func (this *Tox) CallbackFriendNameAdd(cbfn cb_friend_name_ftype, userData interface{}) {
+
+func (this *Tox) callbackFriendNameAdd(cbfn cb_friend_name_ftype, userData interface{}) {
 	cbfnp := (unsafe.Pointer)(&cbfn)
 	if _, ok := this.cb_friend_names[cbfnp]; ok {
 		return
@@ -198,10 +202,12 @@ func callbackFriendStatusMessageWrapperForC(m *C.Tox, a0 C.uint32_t, a1 *C.uint8
 	}
 }
 
+// CallbackFriendStatusMessage sets event handler which is triggered when a friend changes their status message.
 func (this *Tox) CallbackFriendStatusMessage(cbfn cb_friend_status_message_ftype, userData interface{}) {
-	this.CallbackFriendStatusMessageAdd(cbfn, userData)
+	this.callbackFriendStatusMessageAdd(cbfn, userData)
 }
-func (this *Tox) CallbackFriendStatusMessageAdd(cbfn cb_friend_status_message_ftype, userData interface{}) {
+
+func (this *Tox) callbackFriendStatusMessageAdd(cbfn cb_friend_status_message_ftype, userData interface{}) {
 	cbfnp := (unsafe.Pointer)(&cbfn)
 	if _, ok := this.cb_friend_status_messages[cbfnp]; ok {
 		return
@@ -220,10 +226,12 @@ func callbackFriendStatusWrapperForC(m *C.Tox, a0 C.uint32_t, a1 C.int, a2 unsaf
 	}
 }
 
+// CallbackFriendStatus sets event handler which is triggered when a friend changes their user status.
 func (this *Tox) CallbackFriendStatus(cbfn cb_friend_status_ftype, userData interface{}) {
-	this.CallbackFriendStatusAdd(cbfn, userData)
+	this.callbackFriendStatusAdd(cbfn, userData)
 }
-func (this *Tox) CallbackFriendStatusAdd(cbfn cb_friend_status_ftype, userData interface{}) {
+
+func (this *Tox) callbackFriendStatusAdd(cbfn cb_friend_status_ftype, userData interface{}) {
 	cbfnp := (unsafe.Pointer)(&cbfn)
 	if _, ok := this.cb_friend_statuss[cbfnp]; ok {
 		return
@@ -242,10 +250,14 @@ func callbackFriendConnectionStatusWrapperForC(m *C.Tox, a0 C.uint32_t, a1 C.int
 	}
 }
 
+// CallbackFriendConnectionStatus sets event handler which is triggered when a friend goes offline after having been online, or when a friend goes online.
+//
+// The handler will not triggered while adding friends. It is assumed that when adding friends, their connection status is initially offline.
 func (this *Tox) CallbackFriendConnectionStatus(cbfn cb_friend_connection_status_ftype, userData interface{}) {
-	this.CallbackFriendConnectionStatusAdd(cbfn, userData)
+	this.callbackFriendConnectionStatusAdd(cbfn, userData)
 }
-func (this *Tox) CallbackFriendConnectionStatusAdd(cbfn cb_friend_connection_status_ftype, userData interface{}) {
+
+func (this *Tox) callbackFriendConnectionStatusAdd(cbfn cb_friend_connection_status_ftype, userData interface{}) {
 	cbfnp := unsafe.Pointer(&cbfn)
 	if _, ok := this.cb_friend_connection_statuss[cbfnp]; ok {
 		return
@@ -264,10 +276,12 @@ func callbackFriendTypingWrapperForC(m *C.Tox, a0 C.uint32_t, a1 C.uint8_t, a2 u
 	}
 }
 
+// CallbackFriendTyping sets event handler which is triggered when a friend starts or stops typing.
 func (this *Tox) CallbackFriendTyping(cbfn cb_friend_typing_ftype, userData interface{}) {
-	this.CallbackFriendTypingAdd(cbfn, userData)
+	this.callbackFriendTypingAdd(cbfn, userData)
 }
-func (this *Tox) CallbackFriendTypingAdd(cbfn cb_friend_typing_ftype, userData interface{}) {
+
+func (this *Tox) callbackFriendTypingAdd(cbfn cb_friend_typing_ftype, userData interface{}) {
 	cbfnp := (unsafe.Pointer)(&cbfn)
 	if _, ok := this.cb_friend_typings[cbfnp]; ok {
 		return
@@ -286,10 +300,12 @@ func callbackFriendReadReceiptWrapperForC(m *C.Tox, a0 C.uint32_t, a1 C.uint32_t
 	}
 }
 
+// CallbackFriendReadReceipt sets event handler which is triggered when the friend receives the message sent with tox_friend_send_message with the corresponding message ID.
 func (this *Tox) CallbackFriendReadReceipt(cbfn cb_friend_read_receipt_ftype, userData interface{}) {
-	this.CallbackFriendReadReceiptAdd(cbfn, userData)
+	this.callbackFriendReadReceiptAdd(cbfn, userData)
 }
-func (this *Tox) CallbackFriendReadReceiptAdd(cbfn cb_friend_read_receipt_ftype, userData interface{}) {
+
+func (this *Tox) callbackFriendReadReceiptAdd(cbfn cb_friend_read_receipt_ftype, userData interface{}) {
 	cbfnp := (unsafe.Pointer)(&cbfn)
 	if _, ok := this.cb_friend_read_receipts[cbfnp]; ok {
 		return
@@ -310,9 +326,10 @@ func callbackFriendLossyPacketWrapperForC(m *C.Tox, a0 C.uint32_t, a1 *C.uint8_t
 }
 
 func (this *Tox) CallbackFriendLossyPacket(cbfn cb_friend_lossy_packet_ftype, userData interface{}) {
-	this.CallbackFriendLossyPacketAdd(cbfn, userData)
+	this.callbackFriendLossyPacketAdd(cbfn, userData)
 }
-func (this *Tox) CallbackFriendLossyPacketAdd(cbfn cb_friend_lossy_packet_ftype, userData interface{}) {
+
+func (this *Tox) callbackFriendLossyPacketAdd(cbfn cb_friend_lossy_packet_ftype, userData interface{}) {
 	cbfnp := (unsafe.Pointer)(&cbfn)
 	if _, ok := this.cb_friend_lossy_packets[cbfnp]; ok {
 		return
@@ -333,9 +350,10 @@ func callbackFriendLosslessPacketWrapperForC(m *C.Tox, a0 C.uint32_t, a1 *C.uint
 }
 
 func (this *Tox) CallbackFriendLosslessPacket(cbfn cb_friend_lossless_packet_ftype, userData interface{}) {
-	this.CallbackFriendLosslessPacketAdd(cbfn, userData)
+	this.callbackFriendLosslessPacketAdd(cbfn, userData)
 }
-func (this *Tox) CallbackFriendLosslessPacketAdd(cbfn cb_friend_lossless_packet_ftype, userData interface{}) {
+
+func (this *Tox) callbackFriendLosslessPacketAdd(cbfn cb_friend_lossless_packet_ftype, userData interface{}) {
 	cbfnp := (unsafe.Pointer)(&cbfn)
 	if _, ok := this.cb_friend_lossless_packets[cbfnp]; ok {
 		return
@@ -354,10 +372,12 @@ func callbackSelfConnectionStatusWrapperForC(m *C.Tox, status C.int, a2 unsafe.P
 	}
 }
 
+// CallbackSelfConnectionStatus sets event handler which is triggered whenever there is a change in the DHT connection state. When disconnected, a client may choose to call tox_bootstrap again, to reconnect to the DHT. Note that this state may frequently change for short amounts of time. Clients should therefore not immediately bootstrap on receiving a disconnect.
 func (this *Tox) CallbackSelfConnectionStatus(cbfn cb_self_connection_status_ftype, userData interface{}) {
-	this.CallbackSelfConnectionStatusAdd(cbfn, userData)
+	this.callbackSelfConnectionStatusAdd(cbfn, userData)
 }
-func (this *Tox) CallbackSelfConnectionStatusAdd(cbfn cb_self_connection_status_ftype, userData interface{}) {
+
+func (this *Tox) callbackSelfConnectionStatusAdd(cbfn cb_self_connection_status_ftype, userData interface{}) {
 	cbfnp := (unsafe.Pointer)(&cbfn)
 	if _, ok := this.cb_self_connection_statuss[cbfnp]; ok {
 		return
@@ -378,10 +398,12 @@ func callbackFileRecvControlWrapperForC(m *C.Tox, friendNumber C.uint32_t, fileN
 	}
 }
 
+// CallbackFileRecvControl sets event handler which is triggered when a file control command is received from a friend.
 func (this *Tox) CallbackFileRecvControl(cbfn cb_file_recv_control_ftype, userData interface{}) {
-	this.CallbackFileRecvControlAdd(cbfn, userData)
+	this.callbackFileRecvControlAdd(cbfn, userData)
 }
-func (this *Tox) CallbackFileRecvControlAdd(cbfn cb_file_recv_control_ftype, userData interface{}) {
+
+func (this *Tox) callbackFileRecvControlAdd(cbfn cb_file_recv_control_ftype, userData interface{}) {
 	cbfnp := (unsafe.Pointer)(&cbfn)
 	if _, ok := this.cb_file_recv_controls[cbfnp]; ok {
 		return
@@ -405,10 +427,12 @@ func callbackFileRecvWrapperForC(m *C.Tox, friendNumber C.uint32_t, fileNumber C
 	}
 }
 
+// CallbackFileRecv sets event handler which is triggered when a file transfer request is received.
 func (this *Tox) CallbackFileRecv(cbfn cb_file_recv_ftype, userData interface{}) {
-	this.CallbackFileRecvAdd(cbfn, userData)
+	this.callbackFileRecvAdd(cbfn, userData)
 }
-func (this *Tox) CallbackFileRecvAdd(cbfn cb_file_recv_ftype, userData interface{}) {
+
+func (this *Tox) callbackFileRecvAdd(cbfn cb_file_recv_ftype, userData interface{}) {
 	cbfnp := (unsafe.Pointer)(&cbfn)
 	if _, ok := this.cb_file_recvs[cbfnp]; ok {
 		return
@@ -429,10 +453,12 @@ func callbackFileRecvChunkWrapperForC(m *C.Tox, friendNumber C.uint32_t, fileNum
 	}
 }
 
+// CallbackFileRecvChunk sets event handler which is first triggered when a file transfer request is received, and subsequently when a chunk of file data for an accepted request was received.
 func (this *Tox) CallbackFileRecvChunk(cbfn cb_file_recv_chunk_ftype, userData interface{}) {
-	this.CallbackFileRecvChunkAdd(cbfn, userData)
+	this.callbackFileRecvChunkAdd(cbfn, userData)
 }
-func (this *Tox) CallbackFileRecvChunkAdd(cbfn cb_file_recv_chunk_ftype, userData interface{}) {
+
+func (this *Tox) callbackFileRecvChunkAdd(cbfn cb_file_recv_chunk_ftype, userData interface{}) {
 	cbfnp := (unsafe.Pointer)(&cbfn)
 	if _, ok := this.cb_file_recv_chunks[cbfnp]; ok {
 		return
@@ -452,10 +478,12 @@ func callbackFileChunkRequestWrapperForC(m *C.Tox, friendNumber C.uint32_t, file
 	}
 }
 
+// CallbackFileChunkRequest sets event handler which is triggered when Core is ready to send more file data.
 func (this *Tox) CallbackFileChunkRequest(cbfn cb_file_chunk_request_ftype, userData interface{}) {
-	this.CallbackFileChunkRequestAdd(cbfn, userData)
+	this.callbackFileChunkRequestAdd(cbfn, userData)
 }
-func (this *Tox) CallbackFileChunkRequestAdd(cbfn cb_file_chunk_request_ftype, userData interface{}) {
+
+func (this *Tox) callbackFileChunkRequestAdd(cbfn cb_file_chunk_request_ftype, userData interface{}) {
 	cbfnp := (unsafe.Pointer)(&cbfn)
 	if _, ok := this.cb_file_chunk_requests[cbfnp]; ok {
 		return
@@ -465,6 +493,8 @@ func (this *Tox) CallbackFileChunkRequestAdd(cbfn cb_file_chunk_request_ftype, u
 	C.tox_callback_file_chunk_request(this.toxcore, (*C.tox_file_chunk_request_cb)(C.callbackFileChunkRequestWrapperForC))
 }
 
+// NewTox creates and initializes a new Tox instance with the options passed.
+// If the opt is nil, the default options are used.
 func NewTox(opt *ToxOptions) *Tox {
 	var tox = new(Tox)
 	if opt != nil {
@@ -484,7 +514,6 @@ func NewTox(opt *ToxOptions) *Tox {
 	}
 	cbUserDatas.set(toxcore, tox)
 
-	//
 	tox.cb_friend_requests = make(map[unsafe.Pointer]interface{})
 	tox.cb_friend_messages = make(map[unsafe.Pointer]interface{})
 	tox.cb_friend_names = make(map[unsafe.Pointer]interface{})
@@ -512,6 +541,7 @@ func NewTox(opt *ToxOptions) *Tox {
 	return tox
 }
 
+// Kill releases all resources associated with the Tox instance and disconnects from the network.
 func (this *Tox) Kill() {
 	if this == nil || this.toxcore == nil {
 		return
@@ -590,9 +620,9 @@ func (this *Tox) GetSavedata() []byte {
 	return savedata
 }
 
-/*
- * @param pubkey hex 64B length
- */
+// Bootstrap Sends a "get nodes" request to the given bootstrap node with IP, port, and public key to setup connections.
+//
+// This function will attempt to connect to the node using UDP. You must use this function even if Tox_Options.udp_enabled was set to false.
 func (this *Tox) Bootstrap(addr string, port uint16, pubkey string) (bool, error) {
 	this.lock()
 	defer this.unlock()
@@ -614,19 +644,33 @@ func (this *Tox) Bootstrap(addr string, port uint16, pubkey string) (bool, error
 	return bool(r), nil
 }
 
+// SelfGetAddress returns the Tox friend address of the client.
 func (this *Tox) SelfGetAddress() string {
-	var addr [ADDRESS_SIZE]byte
+	var addr [AddressSize]byte
 	var caddr = (*C.uint8_t)(unsafe.Pointer(&addr[0]))
 	C.tox_self_get_address(this.toxcore, caddr)
 
 	return strings.ToUpper(hex.EncodeToString(addr[:]))
 }
 
+// SelfGetConnectionStatus returns whether we are connected to the DHT. The return value is equal to the last value received through the `self_connection_status` callback.
+//
+// @deprecated This getter is deprecated. Use the event and store the status in the client state.
+//
+// TODO: remove and handle the status inside go-toxcore-c, and provides the status as an attribute.
+// TODO: wrap TOX_CONNECTION as a Go type, and change the return value suite for it.
 func (this *Tox) SelfGetConnectionStatus() int {
 	r := C.tox_self_get_connection_status(this.toxcore)
 	return int(r)
 }
 
+// FriendAdd adds a friend to the friend list, send a friend request and returns the friend number.
+//
+// The length of message should between 1 and TOX_MAX_FRIEND_REQUEST_LENGTH.
+//
+// Friend numbers are unique identifiers used in all functions that operate on friends. Once added, a friend number is stable for the lifetime of the Tox object. After saving the state and reloading it, the friend numbers may not be the same as before. Deleting a friend creates a gap in the friend number set, which is filled by the next adding of a friend. Any pattern in friend numbers should not be relied on.
+//
+// NOTE: If more than INT32_MAX friends are added, this function causes undefined behaviour.
 func (this *Tox) FriendAdd(friendId string, message string) (uint32, error) {
 	this.lock()
 	defer this.unlock()
@@ -648,6 +692,11 @@ func (this *Tox) FriendAdd(friendId string, message string) (uint32, error) {
 	return uint32(r), nil
 }
 
+// FriendAddNorequest adds a friend without sending a friend request and returns the friend number.
+//
+// This function is used to add a friend in response to a friend request. If the client receives a friend request, it can be reasonably sure that the other client added this client as a friend, eliminating the need for a friend request.
+//
+// This function is also useful in a situation where both instances are controlled by the same entity, so that this entity can perform the mutual friend adding. In this case, there is no need for a friend request, either.
 func (this *Tox) FriendAddNorequest(friendId string) (uint32, error) {
 	this.lock()
 	defer this.unlock()
@@ -666,6 +715,7 @@ func (this *Tox) FriendAddNorequest(friendId string) (uint32, error) {
 	return uint32(r), nil
 }
 
+// FriendByPublicKey returns the friend number associated with that Public Key.
 func (this *Tox) FriendByPublicKey(pubkey string) (uint32, error) {
 	pubkey_b, err := hex.DecodeString(pubkey)
 	if err != nil {
@@ -681,14 +731,16 @@ func (this *Tox) FriendByPublicKey(pubkey string) (uint32, error) {
 	return uint32(r), nil
 }
 
+// FriendGetPublicKey returns the Public Key associated with a given friend number.
 func (this *Tox) FriendGetPublicKey(friendNumber uint32) (string, error) {
 	var _fn = C.uint32_t(friendNumber)
-	var pubkey_b = make([]byte, PUBLIC_KEY_SIZE)
+	var pubkey_b = make([]byte, PublicKeySize)
 	var pubkey_p = (*C.uint8_t)(&pubkey_b[0])
 
 	var cerr C.TOX_ERR_FRIEND_GET_PUBLIC_KEY
 	r := C.tox_friend_get_public_key(this.toxcore, _fn, pubkey_p, &cerr)
 	if cerr > 0 || bool(r) == false {
+		// TOFIX: cerr is undefined when r is false.
 		return "", toxerr(cerr)
 	}
 	pubkey_h := hex.EncodeToString(pubkey_b)
@@ -696,6 +748,9 @@ func (this *Tox) FriendGetPublicKey(friendNumber uint32) (string, error) {
 	return pubkey_h, nil
 }
 
+// FriendDelete removes friend from the friend list and returns true on success.
+//
+// This does not notify the friend of their deletion. After calling this function, this client will appear offline to the friend and no communication can occur between the two.
 func (this *Tox) FriendDelete(friendNumber uint32) (bool, error) {
 	this.lock()
 	defer this.unlock()
@@ -710,6 +765,13 @@ func (this *Tox) FriendDelete(friendNumber uint32) (bool, error) {
 	return bool(r), nil
 }
 
+// FriendGetConnectionStatus Check whether a friend is currently connected to this client.
+//
+// The result of this function is equal to the last value received by the `friend_connection_status` callback.
+//
+// @deprecated This getter is deprecated. Use the event and store the status in the client state.
+//
+// TODO: remove this func and implement it in recommend.
 func (this *Tox) FriendGetConnectionStatus(friendNumber uint32) (int, error) {
 	var _fn = C.uint32_t(friendNumber)
 
@@ -721,6 +783,7 @@ func (this *Tox) FriendGetConnectionStatus(friendNumber uint32) (int, error) {
 	return int(r), nil
 }
 
+// FriendExists checks if a friend with the given friend number exists and returns true if it does.
 func (this *Tox) FriendExists(friendNumber uint32) bool {
 	var _fn = C.uint32_t(friendNumber)
 
@@ -728,6 +791,15 @@ func (this *Tox) FriendExists(friendNumber uint32) bool {
 	return bool(r)
 }
 
+// FriendSendMessage send text chat message to an online friend and returns the message ID.
+//
+// This function creates a chat message packet and pushes it into the send queue.
+//
+// The message length may not exceed TOX_MAX_MESSAGE_LENGTH. Larger messages must be split by the client and sent as separate messages. Other clients can then reassemble the fragments. Messages may not be empty.
+//
+// The return value of this function is the message ID. If a read receipt is received, the triggered `friend_read_receipt` event will be passed this message ID.
+//
+// Message IDs are unique per friend. The first message ID is 0. Message IDs are incremented by 1 each time a message is sent. If UINT32_MAX messages were sent, the next message ID is 0.
 func (this *Tox) FriendSendMessage(friendNumber uint32, message string) (uint32, error) {
 	this.lock()
 	defer this.unlock()
@@ -762,6 +834,11 @@ func (this *Tox) FriendSendAction(friendNumber uint32, action string) (uint32, e
 	return uint32(r), nil
 }
 
+// SelfSetName sets nickname for the Tox client.
+//
+// Nickname length cannot exceed TOX_MAX_NAME_LENGTH. If length is 0, the name parameter is ignored (it can be NULL), and the nickname is set back to empty.
+//
+// TODO: tox_self_set_name() returns boolean value indicate status of set.
 func (this *Tox) SelfSetName(name string) error {
 	this.lock()
 	defer this.unlock()
@@ -777,18 +854,35 @@ func (this *Tox) SelfSetName(name string) error {
 	return nil
 }
 
+// SelfGetName returns the nickname set by SelfSetName.
+// If no nickname was set before calling this function, the name is empty, and this function has no effect.
 func (this *Tox) SelfGetName() string {
-	nlen := C.tox_self_get_name_size(this.toxcore)
+	// TODO: tox_self_get_name_size() could return 0 if the nickname is not set. line below wrong?
+	nlen := C.tox_self_get_name_size(this.toxcore) // TODO: to replace by SelfGetNameSize()
 	_name := make([]byte, nlen)
 
 	C.tox_self_get_name(this.toxcore, (*C.uint8_t)(safeptr(_name)))
 	return string(_name)
 }
 
+// SelfGetNameSize returns the length of the current nickname as passed to tox_self_set_name.
+//
+// If no nickname was set before calling this function, the name is empty, and this function returns 0.
+//
+// @see threading for concurrency implications.
+func (this *Tox) SelfGetNameSize() int {
+	r := C.tox_self_get_name_size(this.toxcore)
+	return int(r)
+}
+
+// FriendGetName returns the name of the friend designated by the given friend number.
+//
+// The returned value is equal to the data received by the last `friend_name` callback.
 func (this *Tox) FriendGetName(friendNumber uint32) (string, error) {
 	var _fn = C.uint32_t(friendNumber)
 
 	var cerr C.TOX_ERR_FRIEND_QUERY
+	// TODO: tox_friend_get_name_size() should return an unspecified value. need to fix?
 	nlen := C.tox_friend_get_name_size(this.toxcore, _fn, &cerr)
 	_name := make([]byte, nlen)
 
@@ -799,6 +893,7 @@ func (this *Tox) FriendGetName(friendNumber uint32) (string, error) {
 	return string(_name), nil
 }
 
+// FriendGetNameSize returns the length of the friend's name. If the friend number is invalid, the return value is unspecified.
 func (this *Tox) FriendGetNameSize(friendNumber uint32) (int, error) {
 	var _fn = C.uint32_t(friendNumber)
 
@@ -810,11 +905,9 @@ func (this *Tox) FriendGetNameSize(friendNumber uint32) (int, error) {
 	return int(r), nil
 }
 
-func (this *Tox) SelfGetNameSize() int {
-	r := C.tox_self_get_name_size(this.toxcore)
-	return int(r)
-}
-
+// SelfSetStatusMessage sets client's status message.
+//
+// Status message length cannot exceed TOX_MAX_STATUS_MESSAGE_LENGTH. If length is 0, the status parameter is ignored (it can be NULL), and the user status is set back to empty.
 func (this *Tox) SelfSetStatusMessage(status string) (bool, error) {
 	this.lock()
 	defer this.unlock()
@@ -830,11 +923,13 @@ func (this *Tox) SelfSetStatusMessage(status string) (bool, error) {
 	return bool(r), nil
 }
 
+// SelfSetStatus sets client's user status.
 func (this *Tox) SelfSetStatus(status uint8) {
 	var _status = C.TOX_USER_STATUS(status)
 	C.tox_self_set_status(this.toxcore, _status)
 }
 
+// FriendGetStatusMessageSize returns the length of the friend's status message. If the friend number is invalid, the return value is SIZE_MAX.
 func (this *Tox) FriendGetStatusMessageSize(friendNumber uint32) (int, error) {
 	var _fn = C.uint32_t(friendNumber)
 
@@ -846,15 +941,19 @@ func (this *Tox) FriendGetStatusMessageSize(friendNumber uint32) (int, error) {
 	return int(r), nil
 }
 
+// SelfGetStatusMessageSize returns the length of the current status message as passed to tox_self_set_status_message.
+//
+// If no status message was set before calling this function, the status is empty, and this function returns 0.
 func (this *Tox) SelfGetStatusMessageSize() int {
 	r := C.tox_self_get_status_message_size(this.toxcore)
 	return int(r)
 }
 
+// FriendGetStatusMessage returns the status message of the friend designated by the given friend number.
 func (this *Tox) FriendGetStatusMessage(friendNumber uint32) (string, error) {
 	var _fn = C.uint32_t(friendNumber)
 	var cerr C.TOX_ERR_FRIEND_QUERY
-	len := C.tox_friend_get_status_message_size(this.toxcore, _fn, &cerr)
+	len := C.tox_friend_get_status_message_size(this.toxcore, _fn, &cerr) // TODO: to replace by FriendGetStatusMessageSize
 	if cerr > 0 {
 		return "", toxerr(cerr)
 	}
@@ -869,14 +968,24 @@ func (this *Tox) FriendGetStatusMessage(friendNumber uint32) (string, error) {
 	return string(_buf[:]), nil
 }
 
+// SelfGetStatusMessage returns the status message set by tox_self_set_status_message.
+//
+// If no status message was set before calling this function, the status is empty, and this function has no effect.
 func (this *Tox) SelfGetStatusMessage() (string, error) {
-	nlen := C.tox_self_get_status_message_size(this.toxcore)
+	nlen := C.tox_self_get_status_message_size(this.toxcore) // TODO: replace by SelfGetStatusMessageSize
 	var _buf = make([]byte, nlen)
 
 	C.tox_self_get_status_message(this.toxcore, (*C.uint8_t)(safeptr(_buf)))
 	return string(_buf[:]), nil
 }
 
+// FriendGetStatus returns the friend's user status (away/busy/...). If the friend number is invalid, the return value is unspecified.
+//
+// The status returned is equal to the last status received through the `friend_status` callback.
+//
+// @deprecated This getter is deprecated. Use the event and store the status in the client state.
+//
+// TODO: remove this func
 func (this *Tox) FriendGetStatus(friendNumber uint32) (int, error) {
 	var _fn = C.uint32_t(friendNumber)
 
@@ -888,11 +997,15 @@ func (this *Tox) FriendGetStatus(friendNumber uint32) (int, error) {
 	return int(r), nil
 }
 
+// SelfGetStatus returns client's user status.
 func (this *Tox) SelfGetStatus() int {
 	r := C.tox_self_get_status(this.toxcore)
 	return int(r)
 }
 
+// FriendGetLastOnline returns a unix-time timestamp of the last time the friend associated with a given friend number was seen online. This function will return UINT64_MAX on error.
+//
+// TODO: change return value in type time.Time
 func (this *Tox) FriendGetLastOnline(friendNumber uint32) (uint64, error) {
 	var _fn = C.uint32_t(friendNumber)
 
@@ -904,6 +1017,9 @@ func (this *Tox) FriendGetLastOnline(friendNumber uint32) (uint64, error) {
 	return uint64(r), nil
 }
 
+// SelfSetTyping sets client's typing status for a friend and returns true on success.
+//
+// The client is responsible for turning it on or off.
 func (this *Tox) SelfSetTyping(friendNumber uint32, typing bool) (bool, error) {
 	this.lock()
 	defer this.unlock()
@@ -919,6 +1035,11 @@ func (this *Tox) SelfSetTyping(friendNumber uint32, typing bool) (bool, error) {
 	return bool(r), nil
 }
 
+// FriendGetTyping checks whether a friend is currently typing a message and returns true if the friend is typing, or false if the friend is not typing, or the friend number was invalid. Inspect the error code to determine which case it is.
+//
+// @deprecated This getter is deprecated. Use the event and store the status in the client state.
+//
+// TODO: remove this func
 func (this *Tox) FriendGetTyping(friendNumber uint32) (bool, error) {
 	var _fn = C.uint32_t(friendNumber)
 
@@ -930,11 +1051,15 @@ func (this *Tox) FriendGetTyping(friendNumber uint32) (bool, error) {
 	return bool(r), nil
 }
 
+// SelfGetFriendListSize returns the number of friends on the friend list.
+//
+// This function can be used to determine how much memory to allocate for tox_self_get_friend_list.
 func (this *Tox) SelfGetFriendListSize() uint32 {
 	r := C.tox_self_get_friend_list_size(this.toxcore)
 	return uint32(r)
 }
 
+// SelfGetFriendList returns a list of valid friend numbers.
 func (this *Tox) SelfGetFriendList() []uint32 {
 	sz := C.tox_self_get_friend_list_size(this.toxcore)
 	vec := make([]uint32, sz)
@@ -948,11 +1073,13 @@ func (this *Tox) SelfGetFriendList() []uint32 {
 
 // tox_callback_***
 
+// SelfGetNospam returns the 4-byte nospam part of the address. This value is returned in host byte order.
 func (this *Tox) SelfGetNospam() uint32 {
 	r := C.tox_self_get_nospam(this.toxcore)
 	return uint32(r)
 }
 
+// SelfSetNospam sets the 4-byte nospam part of the address. This value is expected in host byte order. I.e. 0x12345678 will form the bytes [12, 34, 56, 78] in the nospam part of the Tox friend address.
 func (this *Tox) SelfSetNospam(nospam uint32) {
 	this.lock()
 	defer this.unlock()
@@ -962,16 +1089,18 @@ func (this *Tox) SelfSetNospam(nospam uint32) {
 	C.tox_self_set_nospam(this.toxcore, _nospam)
 }
 
+// SelfGetPublicKey returns the Tox Public Key (long term) from the Tox object.
 func (this *Tox) SelfGetPublicKey() string {
-	var _pubkey [PUBLIC_KEY_SIZE]byte
+	var _pubkey [PublicKeySize]byte
 
 	C.tox_self_get_public_key(this.toxcore, (*C.uint8_t)(&_pubkey[0]))
 
 	return strings.ToUpper(hex.EncodeToString(_pubkey[:]))
 }
 
+// SelfGetSecretKey returns the Tox Secret Key from the Tox object.
 func (this *Tox) SelfGetSecretKey() string {
-	var _seckey [SECRET_KEY_SIZE]byte
+	var _seckey [SecretKeySize]byte
 
 	C.tox_self_get_secret_key(this.toxcore, (*C.uint8_t)(&_seckey[0]))
 
@@ -980,6 +1109,13 @@ func (this *Tox) SelfGetSecretKey() string {
 
 // tox_lossy_***
 
+// FriendSendLossyPacket sends a custom lossy packet to a friend.
+//
+// The first byte of data must be in the range 200-254. Maximum length of a custom packet is TOX_MAX_CUSTOM_PACKET_SIZE.
+//
+// Lossy packets behave like UDP packets, meaning they might never reach the other side or might arrive more than once (if someone is messing with the connection) or might arrive in the wrong order.
+//
+// Unless latency is an issue, it is recommended that you use lossless custom packets instead.
 func (this *Tox) FriendSendLossyPacket(friendNumber uint32, data string) error {
 	this.lock()
 	defer this.unlock()
@@ -996,6 +1132,11 @@ func (this *Tox) FriendSendLossyPacket(friendNumber uint32, data string) error {
 	return nil
 }
 
+// FriendSendLosslessPacket sends a custom lossless packet to a friend and returns true on success.
+//
+// The first byte of data must be in the range 160-191. Maximum length of a custom packet is TOX_MAX_CUSTOM_PACKET_SIZE.
+//
+// Lossless packet behaviour is comparable to TCP (reliability, arrive in order) but with packets instead of a stream.
 func (this *Tox) FriendSendLosslessPacket(friendNumber uint32, data string) error {
 	this.lock()
 	defer this.unlock()
@@ -1014,6 +1155,13 @@ func (this *Tox) FriendSendLosslessPacket(friendNumber uint32, data string) erro
 
 // tox_callback_avatar_**
 
+// Hash generates a cryptographic hash of the given data.
+//
+// This function may be used by clients for any purpose, but is provided primarily for validating cached avatars. This use is highly recommended to avoid unnecessary avatar updates.
+//
+// If hash is NULL or data is NULL while length is not 0 the function returns false, otherwise it returns true.
+//
+// This function is a wrapper to internal message-digest functions.
 func (this *Tox) Hash(data string, datalen uint32) (string, bool, error) {
 	_data := []byte(data)
 	_hash := make([]byte, C.TOX_HASH_LENGTH)
@@ -1024,6 +1172,8 @@ func (this *Tox) Hash(data string, datalen uint32) (string, bool, error) {
 }
 
 // tox_callback_file_***
+
+// FileControl sends a file control command to a friend for a given file transfer and returns true on success.
 func (this *Tox) FileControl(friendNumber uint32, fileNumber uint32, control int) (bool, error) {
 	var cerr C.TOX_ERR_FILE_CONTROL
 	r := C.tox_file_control(this.toxcore, C.uint32_t(friendNumber), C.uint32_t(fileNumber),
@@ -1034,11 +1184,33 @@ func (this *Tox) FileControl(friendNumber uint32, fileNumber uint32, control int
 	return bool(r), nil
 }
 
+// FileSend sends a file transmission request and returns a file number used as an identifier in subsequent callbacks. This number is per friend. File numbers are reused after a transfer terminates. On failure, this function returns UINT32_MAX. Any pattern in file numbers should not be relied on.
+//
+// Maximum filename length is TOX_MAX_FILENAME_LENGTH bytes. The filename should generally just be a file name, not a path with directory names.
+//
+// If a non-UINT64_MAX file size is provided, it can be used by both sides to determine the sending progress. File size can be set to UINT64_MAX for streaming data of unknown size.
+//
+// File transmission occurs in chunks, which are requested through the `file_chunk_request` event.
+//
+// When a friend goes offline, all file transfers associated with the friend are purged from core.
+//
+// If the file contents change during a transfer, the behaviour is unspecified in general. What will actually happen depends on the mode in which the file was modified and how the client determines the file size.
+//
+// - If the file size was increased
+//   - and sending mode was streaming (file_size = UINT64_MAX), the behaviour will be as expected.
+//   - and sending mode was file (file_size != UINT64_MAX), the file_chunk_request callback will receive length = 0 when Core thinks the file transfer has finished. If the client remembers the file size as it was when sending the request, it will terminate the transfer normally. If the client re-reads the size, it will think the friend cancelled the transfer.
+// - If the file size was decreased
+//   - and sending mode was streaming, the behaviour is as expected.
+//   - and sending mode was file, the callback will return 0 at the new (earlier) end-of-file, signalling to the friend that the transfer was cancelled.
+// - If the file contents were modified
+//   - at a position before the current read, the two files (local and remote) will differ after the transfer terminates.
+//   - at a position after the current read, the file transfer will succeed as expected.
+//   - In either case, both sides will regard the transfer as complete and successful.
 func (this *Tox) FileSend(friendNumber uint32, kind uint32, fileSize uint64, fileId string, fileName string) (uint32, error) {
 	this.lock()
 	defer this.unlock()
 
-	if len(fileId) != FILE_ID_LENGTH*2 {
+	if len(fileId) != FileIDLength*2 {
 	}
 
 	_fileName := []byte(fileName)
@@ -1052,6 +1224,9 @@ func (this *Tox) FileSend(friendNumber uint32, kind uint32, fileSize uint64, fil
 	return uint32(r), nil
 }
 
+// FileSendChunk sends a chunk of file data to a friend and returns true on success.
+//
+// This function is called in response to the `file_chunk_request` callback. The length parameter should be equal to the one received though the callback. If it is zero, the transfer is assumed complete. For files with known size, Core will know that the transfer is complete after the last byte has been received, so it is not necessary (though not harmful) to send a zero-length chunk to terminate. For streams, core will know that the transfer is finished if a chunk with length less than the length requested in the callback is sent.
 func (this *Tox) FileSendChunk(friendNumber uint32, fileNumber uint32, position uint64, data []byte) (bool, error) {
 	this.lock()
 	defer this.unlock()
@@ -1068,6 +1243,9 @@ func (this *Tox) FileSendChunk(friendNumber uint32, fileNumber uint32, position 
 	return bool(r), nil
 }
 
+// FileSeek sends a file seek control command to a friend for a given file transfer.
+//
+// This function can only be called to resume a file transfer right before TOX_FILE_CONTROL_RESUME is sent.
 func (this *Tox) FileSeek(friendNumber uint32, fileNumber uint32, position uint64) (bool, error) {
 	this.lock()
 	defer this.unlock()
@@ -1081,6 +1259,7 @@ func (this *Tox) FileSeek(friendNumber uint32, fileNumber uint32, position uint6
 	return bool(r), nil
 }
 
+// FileGetFileId copies the file id associated to the file transfer and returns true on success.
 func (this *Tox) FileGetFileId(friendNumber uint32, fileNumber uint32) (string, error) {
 	var cerr C.TOX_ERR_FILE_GET
 	var fileId_b = make([]byte, C.TOX_FILE_ID_LENGTH)
@@ -1096,6 +1275,10 @@ func (this *Tox) FileGetFileId(friendNumber uint32, fileNumber uint32) (string, 
 }
 
 // boostrap, see upper
+
+// AddTcpRelay adds additional host:port pair as TCP relay and returns true on success.
+//
+// This function can be used to initiate TCP connections to different ports on the same bootstrap node, or to add TCP relays without using them as bootstrap nodes.
 func (this *Tox) AddTcpRelay(addr string, port uint16, pubkey string) (bool, error) {
 	this.lock()
 	defer this.unlock()
@@ -1120,6 +1303,11 @@ func (this *Tox) AddTcpRelay(addr string, port uint16, pubkey string) (bool, err
 	return bool(r), nil
 }
 
+// IsConnected Return whether we are connected to the DHT. The return value is equal to the last value received through the `self_connection_status` callback.
+//
+// @deprecated This getter is deprecated. Use the event and store the status in the client state.
+//
+// TODO: remove this func
 func (this *Tox) IsConnected() int {
 	r := C.tox_self_get_connection_status(this.toxcore)
 	return int(r)

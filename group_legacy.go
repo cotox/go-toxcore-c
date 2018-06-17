@@ -88,11 +88,11 @@ func (this *Tox) JoinGroupChat(friendNumber uint32, cookie string) (int, error) 
 }
 
 func (this *Tox) GroupActionSend(groupNumber int, action string) (int, error) {
-	return this.ConferenceSendMessage(uint32(groupNumber), MESSAGE_TYPE_ACTION, action)
+	return this.ConferenceSendMessage(uint32(groupNumber), MessageTypeAction, action)
 }
 
 func (this *Tox) GroupMessageSend(groupNumber int, message string) (int, error) {
-	return this.ConferenceSendMessage(uint32(groupNumber), MESSAGE_TYPE_NORMAL, message)
+	return this.ConferenceSendMessage(uint32(groupNumber), MessageTypeNormal, message)
 }
 
 func (this *Tox) GroupSetTitle(groupNumber int, title string) (int, error) {
