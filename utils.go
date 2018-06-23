@@ -2,9 +2,9 @@ package tox
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"reflect"
 	"unsafe"
@@ -16,11 +16,17 @@ func safeptr(b []byte) unsafe.Pointer {
 }
 
 func toxerr(errno interface{}) error {
-	return errors.New(fmt.Sprintf("toxcore error: %v", errno))
+	return fmt.Errorf("toxcore error: %v", errno)
 }
 
-func toxerrf(f string, args ...interface{}) error {
-	return errors.New(fmt.Sprintf(f, args...))
+func toxerrf(format string, args ...interface{}) error {
+	return fmt.Errorf(format, args...)
+}
+
+func assert(condition bool, message string) {
+	if !condition {
+		log.Panic(message)
+	}
 }
 
 var toxdebug = false
@@ -45,6 +51,7 @@ func FileExist(fname string) bool {
 
 func (this *Tox) WriteSavedata(fname string) error {
 	if !FileExist(fname) {
+		// TODO: choose a better file mode
 		err := ioutil.WriteFile(fname, this.GetSavedata(), 0755)
 		if err != nil {
 			return err
@@ -56,6 +63,7 @@ func (this *Tox) WriteSavedata(fname string) error {
 		}
 		liveData := this.GetSavedata()
 		if bytes.Compare(data, liveData) != 0 {
+			// TODO: choose a better file mode
 			err := ioutil.WriteFile(fname, this.GetSavedata(), 0755)
 			if err != nil {
 				return err
@@ -74,13 +82,13 @@ func LoadSavedata(fname string) ([]byte, error) {
 	return ioutil.ReadFile(fname)
 }
 
-func ConnStatusString(status int) (s string) {
+func ConnStatusString(status ConnectionType) (s string) {
 	switch status {
-	case CONNECTION_NONE:
+	case ConnectionNone:
 		s = "CONNECTION_NONE"
-	case CONNECTION_TCP:
+	case ConnectionTCP:
 		s = "CONNECTION_TCP"
-	case CONNECTION_UDP:
+	case ConnectionUDP:
 		s = "CONNECTION_UDP"
 	}
 	return

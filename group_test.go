@@ -10,8 +10,11 @@ import (
 func TestIssue6(t *testing.T) {
 	opts := NewToxOptions()
 	opts.ThreadSafe = true
-	opts.Tcp_port = 34567
-	_t1 := NewTox(opts)
+	opts.TCPPort = 34567
+	_t1, err := NewTox(opts)
+	if err != nil {
+		t.Error(err)
+	}
 	log.Println(_t1)
 	go func() {
 		for {
@@ -22,8 +25,11 @@ func TestIssue6(t *testing.T) {
 
 	opts2 := NewToxOptions()
 	opts2.ThreadSafe = true
-	opts2.Tcp_port = 34568
-	_t2 := NewTox(opts2)
+	opts2.TCPPort = 34568
+	_t2, err := NewTox(opts2)
+	if err != nil {
+		t.Error(err)
+	}
 	log.Println(_t2)
 	_t2.CallbackGroupInviteAdd(func(_ *Tox, friendNumber uint32, itype uint8, data string, userData interface{}) {
 		log.Println(friendNumber, itype)
@@ -35,8 +41,8 @@ func TestIssue6(t *testing.T) {
 		}
 	}()
 
-	waitcond(func() bool { return _t1.IsConnected() > 0 }, 100)
-	waitcond(func() bool { return _t2.IsConnected() > 0 }, 100)
+	waitcond(func() bool { return _t1.IsConnected() }, 100)
+	waitcond(func() bool { return _t2.IsConnected() }, 100)
 	log.Println("both connected")
 
 	gid := _t1.AddAVGroupChat()

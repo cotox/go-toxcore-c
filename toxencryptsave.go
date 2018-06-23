@@ -5,8 +5,8 @@ package tox
 */
 import "C"
 
-const PASS_KEY_LENGTH = int(C.TOX_PASS_KEY_LENGTH)
-const PASS_ENCRYPTION_EXTRA_LENGTH = int(C.TOX_PASS_ENCRYPTION_EXTRA_LENGTH)
+const PassKeyLength = int(C.TOX_PASS_KEY_LENGTH)
+const PassEncryptionExtraLength = int(C.TOX_PASS_ENCRYPTION_EXTRA_LENGTH)
 
 type ToxPassKey struct {
 	cpk *C.Tox_Pass_Key
@@ -44,7 +44,7 @@ func DeriveWithSalt(passphrase []byte, salt []byte) (*ToxPassKey, error) {
 }
 
 func (this *ToxPassKey) Encrypt(plaintext []byte) (bool, error, []byte) {
-	ciphertext := make([]byte, len(plaintext)+PASS_ENCRYPTION_EXTRA_LENGTH)
+	ciphertext := make([]byte, len(plaintext)+PassEncryptionExtraLength)
 	ciphertext_ := (*C.uint8_t)(&ciphertext[0])
 	plaintext_ := (*C.uint8_t)(&plaintext[0])
 
@@ -60,7 +60,7 @@ func (this *ToxPassKey) Encrypt(plaintext []byte) (bool, error, []byte) {
 
 func (this *ToxPassKey) Decrypt(ciphertext []byte) (bool, error, []byte) {
 	ciphertext_ := (*C.uint8_t)(&ciphertext[0])
-	plaintext := make([]byte, len(ciphertext)-PASS_ENCRYPTION_EXTRA_LENGTH)
+	plaintext := make([]byte, len(ciphertext)-PassEncryptionExtraLength)
 	plaintext_ := (*C.uint8_t)(&plaintext[0])
 
 	var cerr C.TOX_ERR_DECRYPTION
@@ -96,7 +96,7 @@ func IsDataEncrypted(data []byte) bool {
 }
 
 func PassEncrypt(plaintext []byte, passphrase []byte) (ciphertext []byte, err error) {
-	ciphertext = make([]byte, len(plaintext)+PASS_ENCRYPTION_EXTRA_LENGTH)
+	ciphertext = make([]byte, len(plaintext)+PassEncryptionExtraLength)
 	ciphertext_ := (*C.uint8_t)(&ciphertext[0])
 	plaintext_ := (*C.uint8_t)(&plaintext[0])
 	passphrase_ := (*C.uint8_t)(&passphrase[0])
@@ -112,7 +112,7 @@ func PassEncrypt(plaintext []byte, passphrase []byte) (ciphertext []byte, err er
 
 func PassDecrypt(ciphertext []byte, passphrase []byte) (plaintext []byte, err error) {
 	ciphertext_ := (*C.uint8_t)(&ciphertext[0])
-	plaintext = make([]byte, len(ciphertext)-PASS_ENCRYPTION_EXTRA_LENGTH)
+	plaintext = make([]byte, len(ciphertext)-PassEncryptionExtraLength)
 	plaintext_ := (*C.uint8_t)(&plaintext[0])
 	passphrase_ := (*C.uint8_t)(&plaintext[0])
 

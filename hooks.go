@@ -8,18 +8,18 @@ type callHookMethods struct {
 }
 
 // include av group
-func (this *Tox) HookConferenceJoin(fn func(friendNumber uint32, groupNumber uint32, cookie string)) {
-	this.hooks.ConferenceJoin = fn
+func (t *Tox) HookConferenceJoin(fn func(friendNumber uint32, groupNumber uint32, cookie string)) {
+	t.hooks.ConferenceJoin = fn
 }
 
-func (this *Tox) HookConferenceDelete(fn func(groupNumber uint32)) {
-	this.hooks.ConferenceDelete = fn
+func (t *Tox) HookConferenceDelete(fn func(groupNumber uint32)) {
+	t.hooks.ConferenceDelete = fn
 }
 
-func (this *Tox) HookConferenceNew(fn func(groupNumber uint32)) {
-	this.hooks.ConferenceDelete = fn
+func (t *Tox) HookConferenceNew(fn func(groupNumber uint32)) {
+	t.hooks.ConferenceDelete = fn
 }
 
-func (this *Tox) HookConferenceSetTitle(fn func(groupNumber uint32, title string)) {
-	this.hooks.ConferenceSetTitle = fn
+func (t *Tox) HookConferenceSetTitle(fn func(groupNumber uint32, title string)) {
+	t.hooks.ConferenceSetTitle = fn
 }
