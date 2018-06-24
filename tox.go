@@ -5,8 +5,6 @@ package tox
 #include <string.h>
 #include <tox/tox.h>
 
-//////
-
 void callbackFriendRequestWrapperForC(Tox *, uint8_t *, uint8_t *, uint16_t, void*);
 void callbackFriendMessageWrapperForC(Tox *, uint32_t, int, uint8_t*, uint32_t, void*);
 void callbackFriendNameWrapperForC(Tox *, uint32_t, uint8_t*, uint32_t, void*);
@@ -28,26 +26,19 @@ void callbackFileChunkRequestWrapperForC(Tox *tox, uint32_t friend_number, uint3
                                        size_t length, void *user_data);
 
 // fix nouse compile warning
-static inline __attribute__((__unused__)) void fixnousetox() {
-}
+static inline __attribute__((__unused__)) void fixnousetox() { }
 
 */
 import "C"
 import (
 	"encoding/hex"
-	"fmt"
 	"log"
 	"strings"
-	// "sync"
 	"unsafe"
 
 	deadlock "github.com/sasha-s/go-deadlock"
 )
 
-// "reflect"
-// "runtime"
-
-//////////
 // friend callback type
 type cb_friend_request_ftype func(this *Tox, pubkey string, message string, userData interface{})
 type cb_friend_message_ftype func(this *Tox, friendNumber uint32, message string, userData interface{})
@@ -367,7 +358,6 @@ func (this *Tox) CallbackSelfConnectionStatusAdd(cbfn cb_self_connection_status_
 	C.tox_callback_self_connection_status(this.toxcore, (*C.tox_self_connection_status_cb)(C.callbackSelfConnectionStatusWrapperForC))
 }
 
-// 包内部函数
 //export callbackFileRecvControlWrapperForC
 func callbackFileRecvControlWrapperForC(m *C.Tox, friendNumber C.uint32_t, fileNumber C.uint32_t,
 	control C.TOX_FILE_CONTROL, userData unsafe.Pointer) {
@@ -1024,6 +1014,7 @@ func (this *Tox) Hash(data string, datalen uint32) (string, bool, error) {
 }
 
 // tox_callback_file_***
+
 func (this *Tox) FileControl(friendNumber uint32, fileNumber uint32, control int) (bool, error) {
 	var cerr C.TOX_ERR_FILE_CONTROL
 	r := C.tox_file_control(this.toxcore, C.uint32_t(friendNumber), C.uint32_t(fileNumber),
@@ -1126,18 +1117,3 @@ func (this *Tox) IsConnected() int {
 }
 
 func (this *Tox) putcbevts(f func()) { this.cbevts = append(this.cbevts, f) }
-
-////////////
-/*
-原则说明：
-所有需要public_key的地方，在go空间内是实际串的16进制字符串表示。
-
-*/
-
-////////////////////
-func KeepPkg() {
-}
-
-func _dirty_init() {
-	fmt.Println("ddddddddd")
-}

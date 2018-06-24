@@ -368,8 +368,3 @@ func main() {
 func makekey(no uint32, a0 interface{}, a1 interface{}) string {
 	return fmt.Sprintf("%d_%v_%v", no, a0, a1)
 }
-
-func _dirty_init() {
-	log.Println("ddddddddd")
-	tox.KeepPkg()
-}
