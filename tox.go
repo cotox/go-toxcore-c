@@ -32,8 +32,10 @@ static inline __attribute__((__unused__)) void fixnousetox() { }
 import "C"
 import (
 	"encoding/hex"
-	"log"
+	"fmt"
+	"math"
 	"strings"
+	"time"
 	"unsafe"
 
 	deadlock "github.com/sasha-s/go-deadlock"
@@ -455,26 +457,59 @@ func (this *Tox) CallbackFileChunkRequestAdd(cbfn cb_file_chunk_request_ftype, u
 	C.tox_callback_file_chunk_request(this.toxcore, (*C.tox_file_chunk_request_cb)(C.callbackFileChunkRequestWrapperForC))
 }
 
-func NewTox(opt *ToxOptions) *Tox {
+func NewTox(opts *ToxOptions) (*Tox, error) {
 	var tox = new(Tox)
-	if opt != nil {
-		tox.opts = opt
+	if opts != nil {
+		tox.opts = opts
 	} else {
 		tox.opts = NewToxOptions()
 	}
+
 	toxopts := tox.opts.toCToxOptions()
 	defer C.tox_options_free(toxopts)
 
 	var cerr C.TOX_ERR_NEW
+
 	var toxcore = C.tox_new(toxopts, &cerr)
-	tox.toxcore = toxcore
-	if toxcore == nil {
-		log.Println(toxerr(cerr))
-		return nil
+
+	switch cerr {
+	case C.TOX_ERR_NEW_OK:
+		assert(toxcore != nil, "toxcore != nil")
+
+	case C.TOX_ERR_NEW_NULL:
+		return nil, fmt.Errorf("one of the arguments to the function was nil when it was not expected")
+
+	case C.TOX_ERR_NEW_MALLOC:
+		return nil, fmt.Errorf("the function was unable to allocate enough memory to store the internal structures for the Tox object")
+
+	case C.TOX_ERR_NEW_PORT_ALLOC:
+		return nil, fmt.Errorf("the function was unable to bind to a port. This may mean that all ports have already been bound, e.g. by other Tox instances, or it may mean a permission error. You may be able to gather more information from errno")
+
+	case C.TOX_ERR_NEW_PROXY_BAD_TYPE:
+		return nil, fmt.Errorf("proxyType was invalid")
+
+	case C.TOX_ERR_NEW_PROXY_BAD_HOST:
+		return nil, fmt.Errorf("proxyType was valid but the proxyHost passed had an invalid format or was nil")
+
+	case C.TOX_ERR_NEW_PROXY_BAD_PORT:
+		return nil, fmt.Errorf("proxyType was valid, but the proxyPort was invalid")
+
+	case C.TOX_ERR_NEW_PROXY_NOT_FOUND:
+		return nil, fmt.Errorf("the proxy address passed could not be resolved")
+
+	case C.TOX_ERR_NEW_LOAD_ENCRYPTED:
+		return nil, fmt.Errorf("the byte array to be loaded contained an encrypted save")
+
+	case C.TOX_ERR_NEW_LOAD_BAD_FORMAT:
+		return nil, fmt.Errorf("the data format was invalid. This can happen when loading data that was saved by an older version of Tox, or when the data has been corrupted. When loading from badly formatted data, some data may have been loaded, and the rest is discarded. Passing an invalid length parameter also causes this error")
+
+	default:
+		return nil, fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
 	}
+
+	tox.toxcore = toxcore
 	cbUserDatas.set(toxcore, tox)
 
-	//
 	tox.cb_friend_requests = make(map[unsafe.Pointer]interface{})
 	tox.cb_friend_messages = make(map[unsafe.Pointer]interface{})
 	tox.cb_friend_names = make(map[unsafe.Pointer]interface{})
@@ -499,7 +534,7 @@ func NewTox(opt *ToxOptions) *Tox {
 	tox.cb_file_recv_chunks = make(map[unsafe.Pointer]interface{})
 	tox.cb_file_chunk_requests = make(map[unsafe.Pointer]interface{})
 
-	return tox
+	return tox, nil
 }
 
 func (this *Tox) Kill() {
@@ -516,12 +551,11 @@ func (this *Tox) Kill() {
 }
 
 // uint32_t tox_iteration_interval(Tox *tox);
-func (this *Tox) IterationInterval() int {
+func (this *Tox) IterationInterval() time.Duration {
 	this.lock()
 	defer this.unlock()
 
-	r := C.tox_iteration_interval(this.toxcore)
-	return int(r)
+	return time.Duration(C.tox_iteration_interval(this.toxcore))
 }
 
 /* The main loop that needs to be run in intervals of tox_iteration_interval() ms. */
@@ -529,9 +563,14 @@ func (this *Tox) IterationInterval() int {
 // compatable with legacy version
 func (this *Tox) Iterate() {
 	this.lock()
-	C.tox_iterate(this.toxcore, nil)
+
+	C.tox_iterate(
+		this.toxcore, // Tox *tox
+		nil,          // void *user_data
+	)
 	cbevts := this.cbevts
 	this.cbevts = nil
+
 	this.unlock()
 
 	this.invokeCallbackEvents(cbevts)
@@ -540,11 +579,16 @@ func (this *Tox) Iterate() {
 // for toktok new method
 func (this *Tox) Iterate2(userData interface{}) {
 	this.lock()
+
 	this.cb_iterate_data = userData
-	C.tox_iterate(this.toxcore, nil)
+	C.tox_iterate(
+		this.toxcore, // Tox *tox
+		nil,          // void *user_data
+	)
 	this.cb_iterate_data = nil
 	cbevts := this.cbevts
 	this.cbevts = nil
+
 	this.unlock()
 
 	this.invokeCallbackEvents(cbevts)
@@ -568,394 +612,865 @@ func (this *Tox) unlock() {
 }
 
 func (this *Tox) GetSavedataSize() int32 {
-	r := C.tox_get_savedata_size(this.toxcore)
-	return int32(r)
+	return int32(C.tox_get_savedata_size(this.toxcore))
 }
 
 func (this *Tox) GetSavedata() []byte {
-	r := C.tox_get_savedata_size(this.toxcore)
-	var savedata = make([]byte, int(r))
+	var savedata = make([]byte, this.GetSavedataSize())
 
-	C.tox_get_savedata(this.toxcore, (*C.uint8_t)(&savedata[0]))
+	C.tox_get_savedata(
+		this.toxcore,               // const Tox *tox
+		(*C.uint8_t)(&savedata[0]), // uint8_t *savedata
+	)
+
 	return savedata
 }
 
 /*
  * @param pubkey hex 64B length
  */
-func (this *Tox) Bootstrap(addr string, port uint16, pubkey string) (bool, error) {
-	this.lock()
-	defer this.unlock()
+func (t *Tox) Bootstrap(addr string, port uint16, pubKey string) error {
+	t.lock()
+	defer t.unlock()
 
-	b_pubkey, err := hex.DecodeString(pubkey)
+	if len(pubKey) != PUBLIC_KEY_SIZE*2 {
+		return fmt.Errorf("invalid Public Key in size (%d): %d, %s", PUBLIC_KEY_SIZE*2, len(pubKey), pubKey)
+	}
+	pubkeyBytes, err := hex.DecodeString(pubKey)
 	if err != nil {
-		return false, toxerr("Invalid pubkey")
+		return fmt.Errorf("invalid Public Key: %s", pubKey)
 	}
 
-	var _addr = []byte(addr)
-	var _port = C.uint16_t(port)
-	var _cpubkey = (*C.uint8_t)(&b_pubkey[0])
+	var addrBytes = []byte(addr)
+	var cerr C.TOX_ERR_BOOTSTRAP
+
+	ok := bool(
+		C.tox_bootstrap(
+			t.toxcore, // Tox *tox
+			(*C.char)(unsafe.Pointer(&addrBytes[0])), // const char *address
+			C.uint16_t(port),                         // uint16_t port
+			(*C.uint8_t)(&pubkeyBytes[0]),            // const uint8_t *public_key
+			&cerr, // TOX_ERR_BOOTSTRAP *error
+		),
+	)
+
+	switch cerr {
+	case C.TOX_ERR_BOOTSTRAP_OK:
+		assert(ok, "tox_bootstrap() return 'false' on success")
+
+		return nil
+
+	case C.TOX_ERR_BOOTSTRAP_NULL:
+		return fmt.Errorf("one of the arguments to the function was false when it was not expected")
+
+	case C.TOX_ERR_BOOTSTRAP_BAD_HOST:
+		return fmt.Errorf("the address could not be resolved to an IP address, or the IP address passed was invalid: %s", addr)
+
+	case C.TOX_ERR_BOOTSTRAP_BAD_PORT:
+		return fmt.Errorf("the port passed was invalid. The valid port range is (1, 65535): %d", port)
+
+	default:
+		return fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
+	}
+}
+
+func (t *Tox) AddTcpRelay(addr string, port uint16, pubKey string) error {
+	t.lock()
+	defer t.unlock()
+
+	var csAddr = C.CString(addr)
+	defer C.free(unsafe.Pointer(csAddr))
+
+	pubkeyBytes, err := hex.DecodeString(pubKey)
+	if err != nil {
+		return err
+	}
+	if strings.ToUpper(hex.EncodeToString(pubkeyBytes)) != pubKey {
+		return fmt.Errorf("wtf, hex enc/dec err")
+	}
 
 	var cerr C.TOX_ERR_BOOTSTRAP
-	r := C.tox_bootstrap(this.toxcore, (*C.char)(unsafe.Pointer(&_addr[0])), _port, _cpubkey, &cerr)
-	if cerr > 0 {
-		return false, toxerr(cerr)
+
+	ok := bool(
+		C.tox_add_tcp_relay(
+			t.toxcore,                     // Tox *tox
+			csAddr,                        // const char *address
+			C.uint16_t(port),              // uint16_t port
+			(*C.uint8_t)(&pubkeyBytes[0]), // const uint8_t *public_key
+			&cerr, // TOX_ERR_BOOTSTRAP *error
+		),
+	)
+
+	switch cerr {
+	case C.TOX_ERR_BOOTSTRAP_OK:
+		assert(ok, "tox_add_tcp_relay() return 'false' on success")
+
+		return nil
+
+	case C.TOX_ERR_BOOTSTRAP_NULL:
+		return fmt.Errorf("one of the arguments to the function was false when it was not expected")
+
+	case C.TOX_ERR_BOOTSTRAP_BAD_HOST:
+		return fmt.Errorf("the address could not be resolved to an IP address, or the IP address passed was invalid: %s", addr)
+
+	case C.TOX_ERR_BOOTSTRAP_BAD_PORT:
+		return fmt.Errorf("the port passed was invalid. The valid port range is (1, 65535): %d", port)
+
+	default:
+		return fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
 	}
-	return bool(r), nil
 }
 
 func (this *Tox) SelfGetAddress() string {
 	var addr [ADDRESS_SIZE]byte
-	var caddr = (*C.uint8_t)(unsafe.Pointer(&addr[0]))
-	C.tox_self_get_address(this.toxcore, caddr)
+
+	C.tox_self_get_address(
+		this.toxcore,                           // const Tox *tox
+		(*C.uint8_t)(unsafe.Pointer(&addr[0])), // uint8_t *address
+	)
 
 	return strings.ToUpper(hex.EncodeToString(addr[:]))
 }
 
 func (this *Tox) SelfGetConnectionStatus() int {
-	r := C.tox_self_get_connection_status(this.toxcore)
-	return int(r)
+	return int(C.tox_self_get_connection_status(this.toxcore))
 }
 
 func (this *Tox) FriendAdd(friendId string, message string) (uint32, error) {
 	this.lock()
 	defer this.unlock()
 
-	friendId_b, err := hex.DecodeString(friendId)
-	friendId_p := (*C.uint8_t)(&friendId_b[0])
+	if len(message) == 1 || len(message) > MAX_FRIEND_REQUEST_LENGTH {
+		return 0, fmt.Errorf("friend request message must be in range [1, %d]: %d", MAX_FRIEND_REQUEST_LENGTH, len(message))
+	}
+
+	friendIDBytes, err := hex.DecodeString(friendId)
 	if err != nil {
-		log.Panic(err)
+		return 0, err
 	}
 
-	cmessage := []byte(message)
+	// If more than INT32_MAX friends are added, this function causes undefined
+	// behavior.
+	// TODO: Check current friend list size, and return error when needed.
 
+	messageBytes := []byte(message)
 	var cerr C.TOX_ERR_FRIEND_ADD
-	r := C.tox_friend_add(this.toxcore, friendId_p,
-		(*C.uint8_t)(&cmessage[0]), C.size_t(len(message)), &cerr)
-	if cerr > 0 {
-		return uint32(r), toxerr(cerr)
+
+	friendNumber := uint32(
+		C.tox_friend_add(
+			this.toxcore,                    // Tox *tox
+			(*C.uint8_t)(&friendIDBytes[0]), // const uint8_t *address
+			(*C.uint8_t)(&messageBytes[0]),  // const uint8_t *message
+			C.size_t(len(message)),          // size_t length
+			&cerr, // TOX_ERR_FRIEND_ADD *error
+		),
+	)
+
+	switch cerr {
+	case C.TOX_ERR_FRIEND_ADD_OK:
+		if friendNumber == math.MaxUint32 {
+			return 0, fmt.Errorf("failed on add friend")
+		}
+
+		return friendNumber, nil
+
+	case C.TOX_ERR_FRIEND_ADD_NULL:
+		return 0, fmt.Errorf("one of the arguments to the function was NULL when it was not expected")
+
+	case C.TOX_ERR_FRIEND_ADD_TOO_LONG:
+		return 0, fmt.Errorf("the length of the friend request message exceeded MaxFriendRequestLength(%d): %d", MAX_FRIEND_REQUEST_LENGTH, len(message))
+
+	case C.TOX_ERR_FRIEND_ADD_NO_MESSAGE:
+		return 0, fmt.Errorf("the friend request message was empty")
+
+	case C.TOX_ERR_FRIEND_ADD_OWN_KEY:
+		return 0, fmt.Errorf("the friend address belongs to the sending client")
+
+	case C.TOX_ERR_FRIEND_ADD_ALREADY_SENT:
+		return 0, fmt.Errorf("friend request has already been sent, or the address belongs to a friend that is already on the friend list: %s", friendId)
+
+	case C.TOX_ERR_FRIEND_ADD_BAD_CHECKSUM:
+		return 0, fmt.Errorf("the friend address checksum failed: %s", friendId)
+
+	case C.TOX_ERR_FRIEND_ADD_SET_NEW_NOSPAM:
+		return 0, fmt.Errorf("the friend was already there, but the nospam value was different: %s", friendId)
+
+	case C.TOX_ERR_FRIEND_ADD_MALLOC:
+		return 0, fmt.Errorf("memory allocation failed when trying to increase the friend list size")
+
+	default:
+		return 0, fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
 	}
-	return uint32(r), nil
 }
 
 func (this *Tox) FriendAddNorequest(friendId string) (uint32, error) {
 	this.lock()
 	defer this.unlock()
 
-	friendId_b, err := hex.DecodeString(friendId)
+	if len(friendId) != PUBLIC_KEY_SIZE*2 {
+		return 0, fmt.Errorf("invalid friendId in size (%d): %d, %s", PUBLIC_KEY_SIZE*2, len(friendId), friendId)
+	}
+	friendIDBytes, err := hex.DecodeString(friendId)
 	if err != nil {
 		return 0, err
 	}
-	friendId_p := (*C.uint8_t)(&friendId_b[0])
 
 	var cerr C.TOX_ERR_FRIEND_ADD
-	r := C.tox_friend_add_norequest(this.toxcore, friendId_p, &cerr)
-	if cerr > 0 {
-		return uint32(r), toxerr(cerr)
+	friendNumber := uint32(
+		C.tox_friend_add_norequest(
+			this.toxcore,                    // Tox *tox
+			(*C.uint8_t)(&friendIDBytes[0]), // const uint8_t *public_key
+			&cerr, // TOX_ERR_FRIEND_ADD *error
+		),
+	)
+
+	switch cerr {
+	case C.TOX_ERR_FRIEND_ADD_OK:
+		if friendNumber == math.MaxUint32 {
+			return 0, fmt.Errorf("failed on add friend")
+		}
+
+		return friendNumber, nil
+
+	case C.TOX_ERR_FRIEND_ADD_NULL:
+		return 0, fmt.Errorf("one of the arguments to the function was NULL when it was not expected")
+
+	case C.TOX_ERR_FRIEND_ADD_TOO_LONG:
+		return 0, fmt.Errorf("the length of the friend request message exceeded MaxFriendRequestLength(%d)", MAX_FRIEND_REQUEST_LENGTH)
+
+	case C.TOX_ERR_FRIEND_ADD_NO_MESSAGE:
+		return 0, fmt.Errorf("the friend request message was empty")
+
+	case C.TOX_ERR_FRIEND_ADD_OWN_KEY:
+		return 0, fmt.Errorf("the friend address belongs to the sending client")
+
+	case C.TOX_ERR_FRIEND_ADD_ALREADY_SENT:
+		return 0, fmt.Errorf("friend request has already been sent, or the address belongs to a friend that is already on the friend list: %s", friendId)
+
+	case C.TOX_ERR_FRIEND_ADD_BAD_CHECKSUM:
+		return 0, fmt.Errorf("the friend address checksum failed: %s", friendId)
+
+	case C.TOX_ERR_FRIEND_ADD_SET_NEW_NOSPAM:
+		return 0, fmt.Errorf("the friend was already there, but the nospam value was different: %s", friendId)
+
+	case C.TOX_ERR_FRIEND_ADD_MALLOC:
+		return 0, fmt.Errorf("memory allocation failed when trying to increase the friend list size")
+
+	default:
+		return 0, fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
 	}
-	return uint32(r), nil
 }
 
 func (this *Tox) FriendByPublicKey(pubkey string) (uint32, error) {
+	if len(pubkey) != ADDRESS_SIZE*2 {
+		return 0, fmt.Errorf("invalid Public Key in size (%d): %d, %s", ADDRESS_SIZE*2, len(pubkey), pubkey)
+	}
 	pubkey_b, err := hex.DecodeString(pubkey)
 	if err != nil {
 		return 0, err
 	}
-	var pubkey_p = (*C.uint8_t)(&pubkey_b[0])
 
 	var cerr C.TOX_ERR_FRIEND_BY_PUBLIC_KEY
-	r := C.tox_friend_by_public_key(this.toxcore, pubkey_p, &cerr)
-	if cerr != C.TOX_ERR_FRIEND_BY_PUBLIC_KEY_OK {
-		return uint32(r), toxerr(cerr)
+
+	friendNumber := uint32(
+		C.tox_friend_by_public_key(
+			this.toxcore,               // const Tox *tox
+			(*C.uint8_t)(&pubkey_b[0]), // const uint8_t *public_key
+			&cerr, // TOX_ERR_FRIEND_BY_PUBLIC_KEY *error
+		),
+	)
+
+	switch cerr {
+	case C.TOX_ERR_FRIEND_BY_PUBLIC_KEY_OK:
+		if friendNumber == math.MaxUint32 {
+			return 0, fmt.Errorf("failed on get friend number by public key")
+		}
+
+		return friendNumber, nil
+
+	case C.TOX_ERR_FRIEND_BY_PUBLIC_KEY_NULL:
+		return 0, fmt.Errorf("one of the arguments to the function was NULL when it was not expected")
+
+	case C.TOX_ERR_FRIEND_BY_PUBLIC_KEY_NOT_FOUND:
+		return 0, fmt.Errorf("no friend with the given Public Key exists on the friend list")
+
+	default:
+		return 0, fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
 	}
-	return uint32(r), nil
 }
 
 func (this *Tox) FriendGetPublicKey(friendNumber uint32) (string, error) {
-	var _fn = C.uint32_t(friendNumber)
-	var pubkey_b = make([]byte, PUBLIC_KEY_SIZE)
-	var pubkey_p = (*C.uint8_t)(&pubkey_b[0])
-
+	pubkey_b := make([]byte, PUBLIC_KEY_SIZE)
 	var cerr C.TOX_ERR_FRIEND_GET_PUBLIC_KEY
-	r := C.tox_friend_get_public_key(this.toxcore, _fn, pubkey_p, &cerr)
-	if cerr > 0 || bool(r) == false {
-		return "", toxerr(cerr)
+
+	ok := bool(
+		C.tox_friend_get_public_key(
+			this.toxcore,               // const Tox *tox
+			C.uint32_t(friendNumber),   // uint32_t friend_number
+			(*C.uint8_t)(&pubkey_b[0]), // uint8_t *public_key
+			&cerr, // TOX_ERR_FRIEND_GET_PUBLIC_KEY *error
+		),
+	)
+
+	switch cerr {
+	case C.TOX_ERR_FRIEND_GET_PUBLIC_KEY_OK:
+		assert(ok, "tox_friend_get_public_key() return 'false' on success")
+
+		return strings.ToUpper(hex.EncodeToString(pubkey_b)), nil
+
+	case C.TOX_ERR_FRIEND_GET_PUBLIC_KEY_FRIEND_NOT_FOUND:
+		return "", fmt.Errorf("no friend with the given number exists on the friend list")
+
+	default:
+		return "", fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
 	}
-	pubkey_h := hex.EncodeToString(pubkey_b)
-	pubkey_h = strings.ToUpper(pubkey_h)
-	return pubkey_h, nil
 }
 
-func (this *Tox) FriendDelete(friendNumber uint32) (bool, error) {
+func (this *Tox) FriendDelete(friendNumber uint32) error {
 	this.lock()
 	defer this.unlock()
 
-	var _fn = C.uint32_t(friendNumber)
-
 	var cerr C.TOX_ERR_FRIEND_DELETE
-	r := C.tox_friend_delete(this.toxcore, _fn, &cerr)
-	if cerr > 0 {
-		return bool(r), toxerr(cerr)
+
+	ok := bool(
+		C.tox_friend_delete(
+			this.toxcore,             // Tox *tox
+			C.uint32_t(friendNumber), // uint32_t friend_number
+			&cerr, // TOX_ERR_FRIEND_DELETE *error
+		),
+	)
+
+	switch cerr {
+	case C.TOX_ERR_FRIEND_DELETE_OK:
+		assert(ok, "tox_friend_delete() return 'false' on success")
+
+		return nil
+
+	case C.TOX_ERR_FRIEND_DELETE_FRIEND_NOT_FOUND:
+		return fmt.Errorf("there was no friend with the given friend number. No friends were deleted")
+
+	default:
+		return fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
 	}
-	return bool(r), nil
 }
 
 func (this *Tox) FriendGetConnectionStatus(friendNumber uint32) (int, error) {
-	var _fn = C.uint32_t(friendNumber)
-
 	var cerr C.TOX_ERR_FRIEND_QUERY
-	r := C.tox_friend_get_connection_status(this.toxcore, _fn, &cerr)
-	if cerr > 0 {
-		return int(r), toxerr(cerr)
+
+	connStatus := int(
+		C.tox_friend_get_connection_status(
+			this.toxcore,             // const Tox *tox
+			C.uint32_t(friendNumber), // uint32_t friend_number
+			&cerr, // TOX_ERR_FRIEND_QUERY *error
+		),
+	)
+
+	switch cerr {
+	case C.TOX_ERR_FRIEND_QUERY_OK:
+		return connStatus, nil
+
+	case C.TOX_ERR_FRIEND_QUERY_NULL:
+		return CONNECTION_NONE, fmt.Errorf("the pointer parameter for storing the query result (name, message) was nil")
+
+	case C.TOX_ERR_FRIEND_QUERY_FRIEND_NOT_FOUND:
+		return CONNECTION_NONE, fmt.Errorf("friendNumber did not designate a valid friend: %d", friendNumber)
+
+	default:
+		return CONNECTION_NONE, fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
 	}
-	return int(r), nil
 }
 
 func (this *Tox) FriendExists(friendNumber uint32) bool {
-	var _fn = C.uint32_t(friendNumber)
-
-	r := C.tox_friend_exists(this.toxcore, _fn)
-	return bool(r)
+	return bool(
+		C.tox_friend_exists(
+			this.toxcore,             // const Tox *tox
+			C.uint32_t(friendNumber), // uint32_t friend_number
+		),
+	)
 }
 
-func (this *Tox) FriendSendMessage(friendNumber uint32, message string) (uint32, error) {
+func (this *Tox) friendSendMessage(friendNumber uint32, message string, msgType C.TOX_MESSAGE_TYPE) (messageID uint32, err error) {
+	if len(message) > MAX_MESSAGE_LENGTH {
+		return 0, fmt.Errorf("length of message over ranged (max: %d): %d", MAX_MESSAGE_LENGTH, len(message))
+	}
+
 	this.lock()
 	defer this.unlock()
 
-	var _fn = C.uint32_t(friendNumber)
 	var _message = []byte(message)
-	var _length = C.size_t(len(message))
 
-	var mtype C.TOX_MESSAGE_TYPE = C.TOX_MESSAGE_TYPE_NORMAL
 	var cerr C.TOX_ERR_FRIEND_SEND_MESSAGE
-	r := C.tox_friend_send_message(this.toxcore, _fn, mtype, (*C.uint8_t)(&_message[0]), _length, &cerr)
-	if cerr != C.TOX_ERR_FRIEND_SEND_MESSAGE_OK {
-		return uint32(r), toxerr(cerr)
+
+	messageID = uint32(
+		C.tox_friend_send_message(
+			this.toxcore,               // Tox *tox
+			C.uint32_t(friendNumber),   // uint32_t friend_number
+			msgType,                    // TOX_MESSAGE_TYPE type
+			(*C.uint8_t)(&_message[0]), // const uint8_t *message
+			C.size_t(len(message)),     // size_t length
+			&cerr, // TOX_ERR_FRIEND_SEND_MESSAGE *error
+		),
+	)
+
+	switch cerr {
+	case C.TOX_ERR_FRIEND_SEND_MESSAGE_OK:
+		return messageID, nil
+
+	case C.TOX_ERR_FRIEND_SEND_MESSAGE_NULL:
+		return 0, fmt.Errorf("one of the arguments to the function was NULL when it was not expected")
+
+	case C.TOX_ERR_FRIEND_SEND_MESSAGE_FRIEND_NOT_FOUND:
+		return 0, fmt.Errorf("friend number did not designate a valid friend")
+
+	case C.TOX_ERR_FRIEND_SEND_MESSAGE_FRIEND_NOT_CONNECTED:
+		return 0, fmt.Errorf("client is currently not connected to the friend")
+
+	case C.TOX_ERR_FRIEND_SEND_MESSAGE_SENDQ:
+		return 0, fmt.Errorf("allocation error occurred while increasing the send queue size")
+
+	case C.TOX_ERR_FRIEND_SEND_MESSAGE_TOO_LONG:
+		return 0, fmt.Errorf("message length exceeded MaxMessageLength(%d): %d", MAX_MESSAGE_LENGTH, len(message))
+
+	case C.TOX_ERR_FRIEND_SEND_MESSAGE_EMPTY:
+		return 0, fmt.Errorf("attempted to send a zero-length message")
+
+	default:
+		return 0, fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
 	}
-	return uint32(r), nil
+}
+
+func (this *Tox) FriendSendMessage(friendNumber uint32, message string) (messageID uint32, err error) {
+	return this.friendSendMessage(friendNumber, message, C.TOX_MESSAGE_TYPE_NORMAL)
 }
 
 func (this *Tox) FriendSendAction(friendNumber uint32, action string) (uint32, error) {
-	this.lock()
-	defer this.unlock()
-
-	var _fn = C.uint32_t(friendNumber)
-	var _action = []byte(action)
-	var _length = C.size_t(len(action))
-
-	var mtype C.TOX_MESSAGE_TYPE = C.TOX_MESSAGE_TYPE_ACTION
-	var cerr C.TOX_ERR_FRIEND_SEND_MESSAGE
-	r := C.tox_friend_send_message(this.toxcore, _fn, mtype, (*C.uint8_t)(&_action[0]), _length, &cerr)
-	if cerr > 0 {
-		return uint32(r), toxerr(cerr)
-	}
-	return uint32(r), nil
+	return this.friendSendMessage(friendNumber, action, C.TOX_MESSAGE_TYPE_ACTION)
 }
 
 func (this *Tox) SelfSetName(name string) error {
+	if len(name) > MAX_NAME_LENGTH {
+		return fmt.Errorf("length nickname is over ranged (max: %d): %d", MAX_NAME_LENGTH, len(name))
+	}
+
 	this.lock()
 	defer this.unlock()
 
 	var _name = []byte(name)
-	var _length = C.size_t(len(name))
-
 	var cerr C.TOX_ERR_SET_INFO
-	C.tox_self_set_name(this.toxcore, (*C.uint8_t)(&_name[0]), _length, &cerr)
-	if cerr > 0 {
-		return toxerr(cerr)
+
+	ok := bool(
+		C.tox_self_set_name(
+			this.toxcore,            // Tox *tox
+			(*C.uint8_t)(&_name[0]), // const uint8_t *name
+			C.size_t(len(name)),     // size_t length
+			&cerr,                   // TOX_ERR_SET_INFO *error
+		),
+	)
+
+	switch cerr {
+	case C.TOX_ERR_SET_INFO_OK:
+		assert(ok, "tox_self_set_name() return 'false' on success")
+
+		return nil
+
+	case C.TOX_ERR_SET_INFO_NULL:
+		return fmt.Errorf("one of the arguments to the function was NULL when it was not expected")
+
+	case C.TOX_ERR_SET_INFO_TOO_LONG:
+		return fmt.Errorf("length exceeded maximum permissible size(%d): %d", MAX_NAME_LENGTH, len(name))
+
+	default:
+		return fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
 	}
-	return nil
 }
 
 func (this *Tox) SelfGetName() string {
 	nlen := C.tox_self_get_name_size(this.toxcore)
 	_name := make([]byte, nlen)
 
-	C.tox_self_get_name(this.toxcore, (*C.uint8_t)(safeptr(_name)))
+	C.tox_self_get_name(
+		this.toxcore,                 // const Tox *tox
+		(*C.uint8_t)(safeptr(_name)), // uint8_t *name
+	)
+
 	return string(_name)
 }
 
 func (this *Tox) FriendGetName(friendNumber uint32) (string, error) {
-	var _fn = C.uint32_t(friendNumber)
-
-	var cerr C.TOX_ERR_FRIEND_QUERY
-	nlen := C.tox_friend_get_name_size(this.toxcore, _fn, &cerr)
-	_name := make([]byte, nlen)
-
-	r := C.tox_friend_get_name(this.toxcore, _fn, (*C.uint8_t)(safeptr(_name)), &cerr)
-	if !bool(r) {
-		return "", toxerr(cerr)
+	nameSize, err := this.FriendGetNameSize(friendNumber)
+	if err != nil {
+		return "", err
 	}
-	return string(_name), nil
+	_name := make([]byte, nameSize)
+	var cerr C.TOX_ERR_FRIEND_QUERY
+
+	ok := bool(
+		C.tox_friend_get_name(
+			this.toxcore,                 // const Tox *tox
+			C.uint32_t(friendNumber),     // uint32_t friend_number
+			(*C.uint8_t)(safeptr(_name)), // uint8_t *name
+			&cerr, // TOX_ERR_FRIEND_QUERY *error
+		),
+	)
+
+	switch cerr {
+	case C.TOX_ERR_FRIEND_QUERY_OK:
+		assert(ok, "tox_friend_get_name() return 'false' on success")
+
+		return string(_name), nil
+
+	case C.TOX_ERR_FRIEND_QUERY_NULL:
+		return "", fmt.Errorf("the pointer parameter for storing the query result (name, message) was nil")
+
+	case C.TOX_ERR_FRIEND_QUERY_FRIEND_NOT_FOUND:
+		return "", fmt.Errorf("friendNumber did not designate a valid friend: %X", friendNumber)
+
+	default:
+		return "", fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
+	}
 }
 
 func (this *Tox) FriendGetNameSize(friendNumber uint32) (int, error) {
-	var _fn = C.uint32_t(friendNumber)
-
 	var cerr C.TOX_ERR_FRIEND_QUERY
-	r := C.tox_friend_get_name_size(this.toxcore, _fn, &cerr)
-	if cerr > 0 {
-		return int(r), toxerr(cerr)
+
+	nameSize := int(
+		C.tox_friend_get_name_size(
+			this.toxcore,             // const Tox *tox
+			C.uint32_t(friendNumber), // uint32_t friend_number
+			&cerr, // TOX_ERR_FRIEND_QUERY *error
+		),
+	)
+
+	switch cerr {
+	case C.TOX_ERR_FRIEND_QUERY_OK:
+		return nameSize, nil
+
+	case C.TOX_ERR_FRIEND_QUERY_NULL:
+		return 0, fmt.Errorf("the pointer parameter for storing the query result (name, message) was nil")
+
+	case C.TOX_ERR_FRIEND_QUERY_FRIEND_NOT_FOUND:
+		return 0, fmt.Errorf("friendNumber did not designate a valid friend: %X", friendNumber)
+
+	default:
+		return 0, fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
 	}
-	return int(r), nil
 }
 
 func (this *Tox) SelfGetNameSize() int {
-	r := C.tox_self_get_name_size(this.toxcore)
-	return int(r)
+	// TODO: thread safe is needed
+	return int(C.tox_self_get_name_size(this.toxcore))
 }
 
-func (this *Tox) SelfSetStatusMessage(status string) (bool, error) {
+func (this *Tox) SelfSetStatusMessage(status string) error {
+	if len(status) > MAX_STATUS_MESSAGE_LENGTH {
+		return fmt.Errorf("status is over ranged (max: %d): %d", MAX_STATUS_MESSAGE_LENGTH, len(status))
+	}
+
 	this.lock()
 	defer this.unlock()
 
 	var _status = []byte(status)
-	var _length = C.size_t(len(status))
-
 	var cerr C.TOX_ERR_SET_INFO
-	r := C.tox_self_set_status_message(this.toxcore, (*C.uint8_t)(&_status[0]), _length, &cerr)
-	if cerr > 0 {
-		return false, toxerr(cerr)
+
+	ok := bool(
+		C.tox_self_set_status_message(
+			this.toxcore,              // Tox *tox
+			(*C.uint8_t)(&_status[0]), // const uint8_t *status_message
+			C.size_t(len(status)),     // size_t length
+			&cerr, // TOX_ERR_SET_INFO *error
+		),
+	)
+
+	switch cerr {
+	case C.TOX_ERR_SET_INFO_OK:
+		assert(ok, "tox_self_set_status_message() return 'false' on success")
+
+		return nil
+
+	case C.TOX_ERR_SET_INFO_NULL:
+		return fmt.Errorf("one of the arguments to the function was NULL when it was not expected")
+
+	case C.TOX_ERR_SET_INFO_TOO_LONG:
+		return fmt.Errorf("length exceeded maximum permissible size(%d): %d", MAX_STATUS_MESSAGE_LENGTH, len(status))
+
+	default:
+		return fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
 	}
-	return bool(r), nil
 }
 
 func (this *Tox) SelfSetStatus(status uint8) {
-	var _status = C.TOX_USER_STATUS(status)
-	C.tox_self_set_status(this.toxcore, _status)
+	C.tox_self_set_status(
+		this.toxcore,              // Tox *tox
+		C.TOX_USER_STATUS(status), // TOX_USER_STATUS status
+	)
 }
 
 func (this *Tox) FriendGetStatusMessageSize(friendNumber uint32) (int, error) {
-	var _fn = C.uint32_t(friendNumber)
-
 	var cerr C.TOX_ERR_FRIEND_QUERY
-	r := C.tox_friend_get_status_message_size(this.toxcore, _fn, &cerr)
-	if cerr > 0 {
-		return int(r), toxerr(cerr)
+
+	size := int(
+		C.tox_friend_get_status_message_size(
+			this.toxcore,             // const Tox *tox
+			C.uint32_t(friendNumber), // uint32_t friend_number
+			&cerr, // TOX_ERR_FRIEND_QUERY *error
+		),
+	)
+
+	switch cerr {
+	case C.TOX_ERR_FRIEND_QUERY_OK:
+		// TODO:
+		//
+		// if size == C.SIZE_MAX {
+		//     return 0, fmt.Errorf("invalid friend number")
+		// }
+
+		return size, nil
+
+	case C.TOX_ERR_FRIEND_QUERY_NULL:
+		return 0, fmt.Errorf("the pointer parameter for storing the query result (name, message) was nil")
+
+	case C.TOX_ERR_FRIEND_QUERY_FRIEND_NOT_FOUND:
+		return 0, fmt.Errorf("friendNumber did not designate a valid friend: %d", friendNumber)
+
+	default:
+		return 0, fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
 	}
-	return int(r), nil
 }
 
 func (this *Tox) SelfGetStatusMessageSize() int {
-	r := C.tox_self_get_status_message_size(this.toxcore)
-	return int(r)
+	return int(C.tox_self_get_status_message_size(this.toxcore))
 }
 
 func (this *Tox) FriendGetStatusMessage(friendNumber uint32) (string, error) {
-	var _fn = C.uint32_t(friendNumber)
+	size, err := this.FriendGetStatusMessageSize(friendNumber)
+	if err != nil {
+		return "", err
+	}
+	_buf := make([]byte, size)
 	var cerr C.TOX_ERR_FRIEND_QUERY
-	len := C.tox_friend_get_status_message_size(this.toxcore, _fn, &cerr)
-	if cerr > 0 {
-		return "", toxerr(cerr)
-	}
 
-	_buf := make([]byte, len)
+	ok := bool(
+		C.tox_friend_get_status_message(
+			this.toxcore,                // const Tox *tox
+			C.uint32_t(friendNumber),    // uint32_t friend_number
+			(*C.uint8_t)(safeptr(_buf)), // uint8_t *status_message
+			&cerr, // TOX_ERR_FRIEND_QUERY *error
+		),
+	)
 
-	cerr = 0
-	r := C.tox_friend_get_status_message(this.toxcore, _fn, (*C.uint8_t)(safeptr(_buf)), &cerr)
-	if !bool(r) || cerr > 0 {
-		return "", toxerr(cerr)
+	switch cerr {
+	case C.TOX_ERR_FRIEND_QUERY_OK:
+		assert(ok, "tox_friend_get_status_message() return 'false' on success")
+
+		return string(_buf[:]), nil
+
+	case C.TOX_ERR_FRIEND_QUERY_NULL:
+		return "", fmt.Errorf("the pointer parameter for storing the query result (name, message) was nil")
+
+	case C.TOX_ERR_FRIEND_QUERY_FRIEND_NOT_FOUND:
+		return "", fmt.Errorf("friendNumber did not designate a valid friend: %X", friendNumber)
+
+	default:
+		return "", fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
 	}
-	return string(_buf[:]), nil
 }
 
 func (this *Tox) SelfGetStatusMessage() (string, error) {
-	nlen := C.tox_self_get_status_message_size(this.toxcore)
-	var _buf = make([]byte, nlen)
+	var _buf = make([]byte, this.SelfGetStatusMessageSize())
 
-	C.tox_self_get_status_message(this.toxcore, (*C.uint8_t)(safeptr(_buf)))
+	C.tox_self_get_status_message(
+		this.toxcore,                // const Tox *tox
+		(*C.uint8_t)(safeptr(_buf)), // uint8_t *status_message
+	)
+
 	return string(_buf[:]), nil
 }
 
 func (this *Tox) FriendGetStatus(friendNumber uint32) (int, error) {
-	var _fn = C.uint32_t(friendNumber)
+	friendNumberInFriendList := func(list []uint32, value uint32) bool {
+		for _, v := range list {
+			if value == v {
+				return true
+			}
+		}
+		return false
+	}(this.SelfGetFriendList(), friendNumber)
+	if !friendNumberInFriendList {
+		return USER_STATUS_NONE, fmt.Errorf("friend is not in friend list")
+	}
 
 	var cerr C.TOX_ERR_FRIEND_QUERY
-	r := C.tox_friend_get_status(this.toxcore, _fn, &cerr)
-	if cerr > 0 {
-		return int(r), toxerr(cerr)
+
+	friendStatus := int(
+		C.tox_friend_get_status(
+			this.toxcore,             // const Tox *tox
+			C.uint32_t(friendNumber), // uint32_t friend_number
+			&cerr, // TOX_ERR_FRIEND_QUERY *error
+		),
+	)
+
+	switch cerr {
+	case C.TOX_ERR_FRIEND_QUERY_OK:
+		return friendStatus, nil
+
+	case C.TOX_ERR_FRIEND_QUERY_NULL:
+		return USER_STATUS_NONE, fmt.Errorf("pointer parameter for storing the query result (name, message) was nil")
+
+	case C.TOX_ERR_FRIEND_QUERY_FRIEND_NOT_FOUND:
+		return USER_STATUS_NONE, fmt.Errorf("friendNumber did not designate a valid friend: %X", friendNumber)
+
+	default:
+		return USER_STATUS_NONE, fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
 	}
-	return int(r), nil
 }
 
 func (this *Tox) SelfGetStatus() int {
-	r := C.tox_self_get_status(this.toxcore)
-	return int(r)
+	return int(C.tox_self_get_status(this.toxcore))
 }
 
-func (this *Tox) FriendGetLastOnline(friendNumber uint32) (uint64, error) {
-	var _fn = C.uint32_t(friendNumber)
-
+func (this *Tox) FriendGetLastOnline(friendNumber uint32) (time.Time, error) {
+	var nullTime time.Time // defined for returning a null-time.
 	var cerr C.TOX_ERR_FRIEND_GET_LAST_ONLINE
-	r := C.tox_friend_get_last_online(this.toxcore, _fn, &cerr)
-	if cerr > 0 {
-		return uint64(r), toxerr(cerr)
+
+	timestamp := uint64(
+		C.tox_friend_get_last_online(
+			this.toxcore,             // const Tox *tox
+			C.uint32_t(friendNumber), // uint32_t friend_number
+			&cerr, // TOX_ERR_FRIEND_GET_LAST_ONLINE *error
+		),
+	)
+
+	switch cerr {
+	case C.TOX_ERR_FRIEND_GET_LAST_ONLINE_OK:
+		if timestamp == math.MaxUint64 {
+			return nullTime, fmt.Errorf("unexpected timestamp")
+		}
+
+		return time.Unix(int64(timestamp), 0), nil
+
+	case C.TOX_ERR_FRIEND_GET_LAST_ONLINE_FRIEND_NOT_FOUND:
+		return nullTime, fmt.Errorf("no friend with the given number exists on the friend list")
+
+	default:
+		return nullTime, fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
 	}
-	return uint64(r), nil
 }
 
-func (this *Tox) SelfSetTyping(friendNumber uint32, typing bool) (bool, error) {
+func (this *Tox) SelfSetTyping(friendNumber uint32, typing bool) error {
 	this.lock()
 	defer this.unlock()
 
-	var _fn = C.uint32_t(friendNumber)
-	var _typing = C._Bool(typing)
-
 	var cerr C.TOX_ERR_SET_TYPING
-	r := C.tox_self_set_typing(this.toxcore, _fn, _typing, &cerr)
-	if cerr > 0 {
-		return bool(r), toxerr(cerr)
+
+	ok := bool(
+		C.tox_self_set_typing(
+			this.toxcore,             // Tox *tox
+			C.uint32_t(friendNumber), // uint32_t friend_number
+			C._Bool(typing),          // bool typing
+			&cerr,                    // TOX_ERR_SET_TYPING *error
+		),
+	)
+
+	switch cerr {
+	case C.TOX_ERR_SET_TYPING_OK:
+		assert(ok, "tox_self_set_typing() return 'false' on success")
+
+		return nil
+
+	case C.TOX_ERR_SET_TYPING_FRIEND_NOT_FOUND:
+		return fmt.Errorf("friend number did not designate a valid friend")
+
+	default:
+		return fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
 	}
-	return bool(r), nil
 }
 
 func (this *Tox) FriendGetTyping(friendNumber uint32) (bool, error) {
-	var _fn = C.uint32_t(friendNumber)
-
 	var cerr C.TOX_ERR_FRIEND_QUERY
-	r := C.tox_friend_get_typing(this.toxcore, _fn, &cerr)
-	if cerr > 0 {
-		return bool(r), toxerr(cerr)
+
+	typing := bool(
+		C.tox_friend_get_typing(
+			this.toxcore,             // const Tox *tox
+			C.uint32_t(friendNumber), // uint32_t friend_number
+			&cerr, // TOX_ERR_FRIEND_QUERY *error
+		),
+	)
+
+	switch cerr {
+	case C.TOX_ERR_FRIEND_QUERY_OK:
+		return typing, nil
+
+	case C.TOX_ERR_FRIEND_QUERY_NULL:
+		return false, fmt.Errorf("pointer parameter for storing the query result (name, message) was nil")
+
+	case C.TOX_ERR_FRIEND_QUERY_FRIEND_NOT_FOUND:
+		return false, fmt.Errorf("friendNumber did not designate a valid friend: %X", friendNumber)
+
+	default:
+		return false, fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
 	}
-	return bool(r), nil
 }
 
-func (this *Tox) SelfGetFriendListSize() uint32 {
-	r := C.tox_self_get_friend_list_size(this.toxcore)
-	return uint32(r)
+func (this *Tox) SelfGetFriendListSize() int {
+	return int(C.tox_self_get_friend_list_size(this.toxcore))
 }
 
 func (this *Tox) SelfGetFriendList() []uint32 {
-	sz := C.tox_self_get_friend_list_size(this.toxcore)
-	vec := make([]uint32, sz)
-	if sz == 0 {
-		return vec
+	size := this.SelfGetFriendListSize()
+	vec := make([]uint32, size)
+	if size == 0 {
+		return vec // fast return on zero-sized friend list
 	}
-	vec_p := unsafe.Pointer(&vec[0])
-	C.tox_self_get_friend_list(this.toxcore, (*C.uint32_t)(vec_p))
+
+	C.tox_self_get_friend_list(
+		this.toxcore,                           // const Tox *tox
+		(*C.uint32_t)(unsafe.Pointer(&vec[0])), // uint32_t *friend_list
+	)
+
 	return vec
 }
 
-// tox_callback_***
-
 func (this *Tox) SelfGetNospam() uint32 {
-	r := C.tox_self_get_nospam(this.toxcore)
-	return uint32(r)
+	return uint32(C.tox_self_get_nospam(this.toxcore))
+}
+
+func (t *Tox) SelfGetNoSpamString() string {
+	return fmt.Sprintf("%X", t.SelfGetNospam())
 }
 
 func (this *Tox) SelfSetNospam(nospam uint32) {
 	this.lock()
 	defer this.unlock()
 
-	var _nospam = C.uint32_t(nospam)
+	C.tox_self_set_nospam(
+		this.toxcore,       // Tox *tox
+		C.uint32_t(nospam), // uint32_t nospam
+	)
+}
 
-	C.tox_self_set_nospam(this.toxcore, _nospam)
+func (t *Tox) SelfSetNoSpamString(noSpam string) error {
+	if len(noSpam) != 8 {
+		return fmt.Errorf("invalid NoSpam format, which should be a 8-char hex string")
+	}
+
+	var noSpamNum uint32
+	_, err := fmt.Sscanf(noSpam, "%8x", &noSpamNum)
+	if err != nil {
+		return err
+	}
+
+	t.SelfSetNospam(noSpamNum)
+
+	return nil
 }
 
 func (this *Tox) SelfGetPublicKey() string {
 	var _pubkey [PUBLIC_KEY_SIZE]byte
 
-	C.tox_self_get_public_key(this.toxcore, (*C.uint8_t)(&_pubkey[0]))
+	C.tox_self_get_public_key(
+		this.toxcore,              // const Tox *tox
+		(*C.uint8_t)(&_pubkey[0]), // uint8_t *public_key
+	)
 
 	return strings.ToUpper(hex.EncodeToString(_pubkey[:]))
 }
@@ -963,7 +1478,10 @@ func (this *Tox) SelfGetPublicKey() string {
 func (this *Tox) SelfGetSecretKey() string {
 	var _seckey [SECRET_KEY_SIZE]byte
 
-	C.tox_self_get_secret_key(this.toxcore, (*C.uint8_t)(&_seckey[0]))
+	C.tox_self_get_secret_key(
+		this.toxcore,              // const Tox *tox
+		(*C.uint8_t)(&_seckey[0]), // uint8_t *secret_key
+	)
 
 	return strings.ToUpper(hex.EncodeToString(_seckey[:]))
 }
@@ -971,92 +1489,295 @@ func (this *Tox) SelfGetSecretKey() string {
 // tox_lossy_***
 
 func (this *Tox) FriendSendLossyPacket(friendNumber uint32, data string) error {
+	if len(data) > MAX_CUSTOM_PACKET_SIZE {
+		return fmt.Errorf("length of data is out of range (max: %d): %d", MAX_CUSTOM_PACKET_SIZE, len(data))
+	}
+
 	this.lock()
 	defer this.unlock()
 
-	var _fn = C.uint32_t(friendNumber)
 	var _data = []byte(data)
-	var _length = C.size_t(len(data))
+	if 200 > _data[0] || _data[0] < 254 {
+		return fmt.Errorf("the first byte of data must be in the range 200-254: %d", _data[0])
+	}
 
 	var cerr C.TOX_ERR_FRIEND_CUSTOM_PACKET
-	r := C.tox_friend_send_lossy_packet(this.toxcore, _fn, (*C.uint8_t)(&_data[0]), _length, &cerr)
-	if !r || cerr != C.TOX_ERR_FRIEND_CUSTOM_PACKET_OK {
-		return toxerr(cerr)
+
+	ok := bool(
+		C.tox_friend_send_lossy_packet(
+			this.toxcore,             // Tox *tox
+			C.uint32_t(friendNumber), // uint32_t friend_number
+			(*C.uint8_t)(&_data[0]),  // const uint8_t *data
+			C.size_t(len(data)),      // size_t length
+			&cerr,                    // TOX_ERR_FRIEND_CUSTOM_PACKET *error
+		),
+	)
+
+	switch cerr {
+	case C.TOX_ERR_FRIEND_CUSTOM_PACKET_OK:
+		assert(ok, "tox_friend_send_lossy_packet() return 'false' on success")
+
+		return nil
+
+	case C.TOX_ERR_FRIEND_CUSTOM_PACKET_NULL:
+		return fmt.Errorf("one of the arguments to the function was NULL when it was not expected")
+
+	case C.TOX_ERR_FRIEND_CUSTOM_PACKET_FRIEND_NOT_FOUND:
+		return fmt.Errorf("friend number did not designate a valid friend: %d", friendNumber)
+
+	case C.TOX_ERR_FRIEND_CUSTOM_PACKET_FRIEND_NOT_CONNECTED:
+		return fmt.Errorf("client is currently not connected to the friend")
+
+	case C.TOX_ERR_FRIEND_CUSTOM_PACKET_INVALID:
+		return fmt.Errorf("the first byte of data was not in the specified range for the packet type")
+
+	case C.TOX_ERR_FRIEND_CUSTOM_PACKET_EMPTY:
+		return fmt.Errorf("attempted to send an empty packet")
+
+	case C.TOX_ERR_FRIEND_CUSTOM_PACKET_TOO_LONG:
+		return fmt.Errorf("packet data length exceeded MaxCustomPacketSize(%d): %d", MAX_CUSTOM_PACKET_SIZE, len(data))
+
+	case C.TOX_ERR_FRIEND_CUSTOM_PACKET_SENDQ:
+		return fmt.Errorf("packet queue is full")
+
+	default:
+		return fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
 	}
-	return nil
 }
 
 func (this *Tox) FriendSendLosslessPacket(friendNumber uint32, data string) error {
+	if len(data) > MAX_CUSTOM_PACKET_SIZE {
+		return fmt.Errorf("length of data is out of range (max: %d): %d", MAX_CUSTOM_PACKET_SIZE, len(data))
+	}
+
 	this.lock()
 	defer this.unlock()
 
-	var _fn = C.uint32_t(friendNumber)
 	var _data = []byte(data)
-	var _length = C.size_t(len(data))
+	if 160 > _data[0] || _data[0] > 191 {
+		return fmt.Errorf("the first byte of data must be in the range 160-191: %d", _data[0])
+	}
 
 	var cerr C.TOX_ERR_FRIEND_CUSTOM_PACKET
-	r := C.tox_friend_send_lossless_packet(this.toxcore, _fn, (*C.uint8_t)(&_data[0]), _length, &cerr)
-	if !r || cerr != C.TOX_ERR_FRIEND_CUSTOM_PACKET_OK {
-		return toxerr(cerr)
+
+	ok := bool(
+		C.tox_friend_send_lossless_packet(
+			this.toxcore,             // Tox *tox
+			C.uint32_t(friendNumber), // uint32_t friend_number
+			(*C.uint8_t)(&_data[0]),  // const uint8_t *data
+			C.size_t(len(data)),      // size_t length
+			&cerr,                    // TOX_ERR_FRIEND_CUSTOM_PACKET *error
+		),
+	)
+
+	switch cerr {
+	case C.TOX_ERR_FRIEND_CUSTOM_PACKET_OK:
+		assert(ok, "tox_friend_send_lossless_packet() return 'false' on success")
+
+		return nil
+
+	case C.TOX_ERR_FRIEND_CUSTOM_PACKET_NULL:
+		return fmt.Errorf("one of the arguments to the function was NULL when it was not expected")
+
+	case C.TOX_ERR_FRIEND_CUSTOM_PACKET_FRIEND_NOT_FOUND:
+		return fmt.Errorf("friend number did not designate a valid friend: %d", friendNumber)
+
+	case C.TOX_ERR_FRIEND_CUSTOM_PACKET_FRIEND_NOT_CONNECTED:
+		return fmt.Errorf("client is currently not connected to the friend")
+
+	case C.TOX_ERR_FRIEND_CUSTOM_PACKET_INVALID:
+		return fmt.Errorf("the first byte of data was not in the specified range for the packet type")
+
+	case C.TOX_ERR_FRIEND_CUSTOM_PACKET_EMPTY:
+		return fmt.Errorf("attempted to send an empty packet")
+
+	case C.TOX_ERR_FRIEND_CUSTOM_PACKET_TOO_LONG:
+		return fmt.Errorf("packet data length exceeded MaxCustomPacketSize(%d): %d", MAX_CUSTOM_PACKET_SIZE, len(data))
+
+	case C.TOX_ERR_FRIEND_CUSTOM_PACKET_SENDQ:
+		return fmt.Errorf("packet queue is full")
+
+	default:
+		return fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
 	}
-	return nil
 }
 
 // tox_callback_avatar_**
 
-func (this *Tox) Hash(data string, datalen uint32) (string, bool, error) {
+func (this *Tox) Hash(data string) (bool, string) {
 	_data := []byte(data)
-	_hash := make([]byte, C.TOX_HASH_LENGTH)
-	var _datalen = C.size_t(datalen)
+	_hash := make([]byte, HASH_LENGTH)
 
-	r := C.tox_hash((*C.uint8_t)(&_hash[0]), (*C.uint8_t)(&_data[0]), _datalen)
-	return string(_hash), bool(r), nil
+	ok := bool(
+		C.tox_hash(
+			(*C.uint8_t)(&_hash[0]), // uint8_t *hash
+			(*C.uint8_t)(&_data[0]), // const uint8_t *data
+			C.size_t(len(data)),     // size_t length
+		),
+	)
+
+	// If hash is NULL or data is NULL while length is not 0 the
+	// function returns false, otherwise it returns true.
+	assert(ok && len(data) > 0, "tox_hash() return 'false' on success")
+
+	return ok, string(_hash)
 }
 
 // tox_callback_file_***
 
 func (this *Tox) FileControl(friendNumber uint32, fileNumber uint32, control int) (bool, error) {
 	var cerr C.TOX_ERR_FILE_CONTROL
-	r := C.tox_file_control(this.toxcore, C.uint32_t(friendNumber), C.uint32_t(fileNumber),
-		C.TOX_FILE_CONTROL(control), &cerr)
-	if cerr > 0 {
-		return false, toxerr(cerr)
+
+	ok := bool(
+		C.tox_file_control(
+			this.toxcore,                // Tox *tox
+			C.uint32_t(friendNumber),    // uint32_t friend_number
+			C.uint32_t(fileNumber),      // uint32_t file_number
+			C.TOX_FILE_CONTROL(control), // TOX_FILE_CONTROL control
+			&cerr, // TOX_ERR_FILE_CONTROL *error
+		),
+	)
+
+	switch cerr {
+	case C.TOX_ERR_FILE_CONTROL_OK:
+		assert(ok, "tox_file_control() return 'false' on success")
+
+		return ok, nil
+
+	case C.TOX_ERR_FILE_CONTROL_FRIEND_NOT_FOUND:
+		return false, fmt.Errorf("friend_number passed did not designate a valid friend")
+
+	case C.TOX_ERR_FILE_CONTROL_FRIEND_NOT_CONNECTED:
+		return false, fmt.Errorf("client is currently not connected to the friend")
+
+	case C.TOX_ERR_FILE_CONTROL_NOT_FOUND:
+		return false, fmt.Errorf("no file transfer with the given file number was found for the given friend")
+
+	case C.TOX_ERR_FILE_CONTROL_NOT_PAUSED:
+		return false, fmt.Errorf("RESUME control was sent, but the file transfer is running normally")
+
+	case C.TOX_ERR_FILE_CONTROL_DENIED:
+		return false, fmt.Errorf("RESUME control was sent, but the file transfer was paused by the other party. Only the party that paused the transfer can resume it")
+
+	case C.TOX_ERR_FILE_CONTROL_ALREADY_PAUSED:
+		return false, fmt.Errorf("PAUSE control was sent, but the file transfer was already paused")
+
+	case C.TOX_ERR_FILE_CONTROL_SENDQ:
+		return false, fmt.Errorf("packet queue is full")
+
+	default:
+		return false, fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
 	}
-	return bool(r), nil
 }
 
 func (this *Tox) FileSend(friendNumber uint32, kind uint32, fileSize uint64, fileId string, fileName string) (uint32, error) {
+	if len(fileName) > MAX_FILENAME_LENGTH {
+		return 0, fmt.Errorf("fileName length over range (max: %d): %d", MAX_FILENAME_LENGTH, len(fileName))
+	}
+
 	this.lock()
 	defer this.unlock()
 
-	if len(fileId) != FILE_ID_LENGTH*2 {
-	}
-
+	fileIDBytes := []byte(fileId)
 	_fileName := []byte(fileName)
-
 	var cerr C.TOX_ERR_FILE_SEND
-	r := C.tox_file_send(this.toxcore, C.uint32_t(friendNumber), C.uint32_t(kind), C.uint64_t(fileSize),
-		nil, (*C.uint8_t)(&_fileName[0]), C.size_t(len(fileName)), &cerr)
-	if cerr > 0 {
-		return uint32(r), toxerr(cerr)
+
+	fileNumber := uint32(
+		C.tox_file_send(
+			this.toxcore,                  // Tox *tox
+			C.uint32_t(friendNumber),      // uint32_t friend_number
+			C.uint32_t(kind),              // uint32_t kind
+			C.uint64_t(fileSize),          // uint64_t file_size
+			(*C.uint8_t)(&fileIDBytes[0]), // const uint8_t *file_id
+			(*C.uint8_t)(&_fileName[0]),   // const uint8_t *filename
+			C.size_t(len(fileName)),       // size_t filename_length
+			&cerr, // TOX_ERR_FILE_SEND *error
+		),
+	)
+
+	switch cerr {
+	case C.TOX_ERR_FILE_SEND_OK:
+		if fileNumber == math.MaxUint32 {
+			return 0, fmt.Errorf("file send error")
+		}
+
+		return fileNumber, nil
+
+	case C.TOX_ERR_FILE_SEND_NULL:
+		return 0, fmt.Errorf("one of the arguments to the function was NULL when it was not expected")
+
+	case C.TOX_ERR_FILE_SEND_FRIEND_NOT_FOUND:
+		return 0, fmt.Errorf("friend_number passed did not designate a valid friend")
+
+	case C.TOX_ERR_FILE_SEND_FRIEND_NOT_CONNECTED:
+		return 0, fmt.Errorf("client is currently not connected to the friend")
+
+	case C.TOX_ERR_FILE_SEND_NAME_TOO_LONG:
+		return 0, fmt.Errorf("filename length exceeded MaxFilenameLength (%d) bytes: %d", MAX_FILENAME_LENGTH, len(fileName))
+
+	case C.TOX_ERR_FILE_SEND_TOO_MANY:
+		return 0, fmt.Errorf("too many ongoing transfers. allowed in 256 per friend per direction (sending and receiving)")
+
+	default:
+		return 0, fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
 	}
-	return uint32(r), nil
 }
 
 func (this *Tox) FileSendChunk(friendNumber uint32, fileNumber uint32, position uint64, data []byte) (bool, error) {
-	this.lock()
-	defer this.unlock()
-
 	if data == nil || len(data) == 0 {
 		return false, toxerr("empty data")
 	}
+
+	this.lock()
+	defer this.unlock()
+
 	var cerr C.TOX_ERR_FILE_SEND_CHUNK
-	r := C.tox_file_send_chunk(this.toxcore, C.uint32_t(friendNumber), C.uint32_t(fileNumber),
-		C.uint64_t(position), (*C.uint8_t)(&data[0]), C.size_t(len(data)), &cerr)
-	if cerr > 0 {
-		return bool(r), toxerr(cerr)
+
+	ok := bool(
+		C.tox_file_send_chunk(
+			this.toxcore,             // Tox *tox
+			C.uint32_t(friendNumber), // uint32_t friend_number
+			C.uint32_t(fileNumber),   // uint32_t file_number
+			C.uint64_t(position),     // uint64_t position
+			(*C.uint8_t)(&data[0]),   // const uint8_t *data
+			C.size_t(len(data)),      // size_t length
+			&cerr,                    // TOX_ERR_FILE_SEND_CHUNK *error
+		),
+	)
+
+	switch cerr {
+	case C.TOX_ERR_FILE_SEND_CHUNK_OK:
+		assert(ok, "tox_file_send_chunk() return 'false' on success")
+
+		return ok, nil
+
+	case C.TOX_ERR_FILE_SEND_CHUNK_NULL:
+		return false, fmt.Errorf("length parameter was non-zero, but data was NULL")
+
+	case C.TOX_ERR_FILE_SEND_CHUNK_FRIEND_NOT_FOUND:
+		return false, fmt.Errorf("friend_number passed did not designate a valid friend")
+
+	case C.TOX_ERR_FILE_SEND_CHUNK_FRIEND_NOT_CONNECTED:
+		return false, fmt.Errorf("client is currently not connected to the friend")
+
+	case C.TOX_ERR_FILE_SEND_CHUNK_NOT_FOUND:
+		return false, fmt.Errorf("no file transfer with the given file number was found for the given friend")
+
+	case C.TOX_ERR_FILE_SEND_CHUNK_NOT_TRANSFERRING:
+		return false, fmt.Errorf("file transfer was found but isn't in a transferring state")
+
+	case C.TOX_ERR_FILE_SEND_CHUNK_INVALID_LENGTH:
+		return false, fmt.Errorf("attempted to send more or less data than requested")
+
+	case C.TOX_ERR_FILE_SEND_CHUNK_SENDQ:
+		return false, fmt.Errorf("packet queue is full")
+
+	case C.TOX_ERR_FILE_SEND_CHUNK_WRONG_POSITION:
+		return false, fmt.Errorf("position parameter was wrong")
+
+	default:
+		return false, fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
 	}
-	return bool(r), nil
 }
 
 func (this *Tox) FileSeek(friendNumber uint32, fileNumber uint32, position uint64) (bool, error) {
@@ -1064,51 +1785,78 @@ func (this *Tox) FileSeek(friendNumber uint32, fileNumber uint32, position uint6
 	defer this.unlock()
 
 	var cerr C.TOX_ERR_FILE_SEEK
-	r := C.tox_file_seek(this.toxcore, C.uint32_t(friendNumber), C.uint32_t(fileNumber),
-		C.uint64_t(position), &cerr)
-	if cerr > 0 {
-		return false, toxerr(cerr)
+
+	ok := bool(
+		C.tox_file_seek(
+			this.toxcore,             // Tox *tox
+			C.uint32_t(friendNumber), // uint32_t friend_number
+			C.uint32_t(fileNumber),   // uint32_t file_number
+			C.uint64_t(position),     // uint64_t position
+			&cerr,                    // TOX_ERR_FILE_SEEK *error
+		),
+	)
+
+	switch cerr {
+	case C.TOX_ERR_FILE_SEEK_OK:
+		assert(ok, "tox_file_seek() return 'false' on success")
+
+		return ok, nil
+
+	case C.TOX_ERR_FILE_SEEK_FRIEND_NOT_FOUND:
+		return false, fmt.Errorf("friend_number passed did not designate a valid friend")
+
+	case C.TOX_ERR_FILE_SEEK_FRIEND_NOT_CONNECTED:
+		return false, fmt.Errorf("client is currently not connected to the friend")
+
+	case C.TOX_ERR_FILE_SEEK_NOT_FOUND:
+		return false, fmt.Errorf("file transfer with the given file number was found for the given friend")
+
+	case C.TOX_ERR_FILE_SEEK_DENIED:
+		return false, fmt.Errorf("file was not in a state where it could be seed")
+
+	case C.TOX_ERR_FILE_SEEK_INVALID_POSITION:
+		return false, fmt.Errorf("seek position was invalid")
+
+	case C.TOX_ERR_FILE_SEEK_SENDQ:
+		return false, fmt.Errorf("packet queue is full")
+
+	default:
+		return false, fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
 	}
-	return bool(r), nil
 }
 
 func (this *Tox) FileGetFileId(friendNumber uint32, fileNumber uint32) (string, error) {
 	var cerr C.TOX_ERR_FILE_GET
 	var fileId_b = make([]byte, C.TOX_FILE_ID_LENGTH)
 
-	r := C.tox_file_get_file_id(this.toxcore, C.uint32_t(fileNumber), C.uint32_t(fileNumber),
-		(*C.uint8_t)(&fileId_b[0]), &cerr)
-	if cerr > 0 || bool(r) == false {
-		return "", toxerr(cerr)
-	}
+	ok := bool(
+		C.tox_file_get_file_id(
+			this.toxcore,               // const Tox *tox
+			C.uint32_t(fileNumber),     // uint32_t friend_number
+			C.uint32_t(fileNumber),     // uint32_t file_number
+			(*C.uint8_t)(&fileId_b[0]), // uint8_t *file_id
+			&cerr, // TOX_ERR_FILE_GET *error
+		),
+	)
 
-	var fileId_h = strings.ToUpper(hex.EncodeToString(fileId_b))
-	return fileId_h, nil
-}
+	switch cerr {
+	case C.TOX_ERR_FILE_GET_OK:
+		assert(ok, "tox_file_get_file_id() return 'false' on success")
 
-// boostrap, see upper
-func (this *Tox) AddTcpRelay(addr string, port uint16, pubkey string) (bool, error) {
-	this.lock()
-	defer this.unlock()
+		return strings.ToUpper(hex.EncodeToString(fileId_b)), nil
 
-	var _addr = C.CString(addr)
-	defer C.free(unsafe.Pointer(_addr))
-	var _port = C.uint16_t(port)
-	b_pubkey, err := hex.DecodeString(pubkey)
-	if err != nil {
-		log.Panic(err)
-	}
-	if strings.ToUpper(hex.EncodeToString(b_pubkey)) != pubkey {
-		log.Panic("wtf, hex enc/dec err")
-	}
-	var _pubkey = (*C.uint8_t)(&b_pubkey[0])
+	case C.TOX_ERR_FILE_GET_NULL:
+		return "", fmt.Errorf("One of the arguments to the function was NULL when it was not expected")
 
-	var cerr C.TOX_ERR_BOOTSTRAP
-	r := C.tox_add_tcp_relay(this.toxcore, _addr, _port, _pubkey, &cerr)
-	if cerr > 0 {
-		return bool(r), toxerr(cerr)
+	case C.TOX_ERR_FILE_GET_FRIEND_NOT_FOUND:
+		return "", fmt.Errorf("friend_number passed did not designate a valid friend")
+
+	case C.TOX_ERR_FILE_GET_NOT_FOUND:
+		return "", fmt.Errorf("No file transfer with the given file number was found for the given friend")
+
+	default:
+		return "", fmt.Errorf("unknown error code, maybe go-toxcore-c is outdated from c-toxcore: %d", cerr)
 	}
-	return bool(r), nil
 }
 
 func (this *Tox) IsConnected() int {

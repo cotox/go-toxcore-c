@@ -31,41 +31,67 @@ func init() {
 
 func TestCreate(t *testing.T) {
 	t.Run("no options", func(t *testing.T) {
-		_t := NewTox(nil)
+		_t, err := NewTox(nil)
+		if err != nil {
+			t.Error(err)
+		}
 		if _t == nil {
 			t.Error("nil")
 		}
 		_t.Kill()
 	})
+
 	t.Run("default options", func(t *testing.T) {
 		opts := NewToxOptions()
-		_t := NewTox(opts)
+		_t, err := NewTox(opts)
+		if err != nil {
+			t.Error(err)
+		}
 		if _t == nil {
 			t.Error("nil")
 		}
 		_t.Kill()
 	})
+
 	t.Run("tcp options", func(t *testing.T) {
 		opts := NewToxOptions()
 		opts.Tcp_port = 44577
-		_t := NewTox(opts)
+		_t, err := NewTox(opts)
+		if err != nil {
+			t.Error(err)
+		}
 		if _t == nil {
 			t.Error("nil")
 		}
 		_t.Kill()
 	})
+
 	t.Run("tcp conflict", func(t *testing.T) {
 		opts := NewToxOptions()
 		opts.Tcp_port = 44587
-		_t, _t2 := NewTox(opts), NewTox(opts)
-		if _t == nil || _t2 != nil {
-			t.Error("should non-nil/nil", _t, _t2)
+		_t, err := NewTox(opts)
+		if err != nil {
+			t.Error(err)
+		}
+		if _t == nil {
+			t.Error("should non-nil:", _t)
+		}
+		_t2, err := NewTox(opts)
+		if err != nil {
+			t.Error(err)
+		}
+		if _t2 != nil {
+			t.Error("should nil:", _t2)
 		}
 		_t.Kill()
 		_t2.Kill()
 	})
+
 	t.Run("save profile", func(t *testing.T) {
-		_t := NewTox(nil)
+		_t, err := NewTox(nil)
+		if err != nil {
+			t.Error(err)
+		}
 		sz := _t.GetSavedataSize()
 		dat := _t.GetSavedata()
 		if sz <= 0 || dat == nil || len(dat) != int(sz) {
@@ -73,41 +99,55 @@ func TestCreate(t *testing.T) {
 		}
 		_t.Kill()
 	})
+
 	t.Run("load profile", func(t *testing.T) {
-		_t := NewTox(nil)
+		_t, err := NewTox(nil)
+		if err != nil {
+			t.Error(err)
+		}
 		dat := _t.GetSavedata()
 		_t.Kill()
 
 		opts := NewToxOptions()
 		opts.Savedata_data = dat
 		opts.Savedata_type = SAVEDATA_TYPE_TOX_SAVE
-		_t2 := NewTox(opts)
+		_t2, err := NewTox(opts)
+		if err != nil {
+			t.Error(err)
+		}
 		dat2 := _t2.GetSavedata()
 		if len(dat2) != len(dat) || string(dat2) != string(dat) {
 			t.Error("must ==")
 		}
 		_t2.Kill()
 	})
+
 	t.Run("load error profile", func(t *testing.T) {
-		_t := NewTox(nil)
+		_t, err := NewTox(nil)
+		if err != nil {
+			t.Error(err)
+		}
 		dat := _t.GetSavedata()
-		addr := _t.SelfGetAddress()
 		_t.Kill()
 
 		opts := NewToxOptions()
 		opts.Savedata_data = append([]byte("set-broken"), dat...)
 		opts.Savedata_type = SAVEDATA_TYPE_TOX_SAVE
-		_t2 := NewTox(opts)
-		if _t2 == nil {
-			t.Error("must non-nil")
+		_t2, err := NewTox(opts)
+		if err == nil {
+			t.Error("err must non-nil")
 		}
-		if addr == _t2.SelfGetAddress() {
-			t.Error("must !=", addr, _t2.SelfGetAddress())
+		if _t2 != nil {
+			t.Error("must nil")
 		}
 		_t2.Kill()
 	})
+
 	t.Run("load seckey", func(t *testing.T) {
-		_t := NewTox(nil)
+		_t, err := NewTox(nil)
+		if err != nil {
+			t.Error(err)
+		}
 		addr := _t.SelfGetAddress()
 		seckey := _t.SelfGetSecretKey()
 		_t.Kill()
@@ -116,7 +156,10 @@ func TestCreate(t *testing.T) {
 		opts.Savedata_type = SAVEDATA_TYPE_SECRET_KEY
 		binsk, _ := hex.DecodeString(seckey)
 		opts.Savedata_data = binsk
-		_t2 := NewTox(opts)
+		_t2, err := NewTox(opts)
+		if err != nil {
+			t.Error(err)
+		}
 		if _t2.SelfGetSecretKey() != seckey {
 			t.Error("must =")
 		}
@@ -124,8 +167,12 @@ func TestCreate(t *testing.T) {
 			t.Error("must =", _t2.SelfGetAddress(), addr)
 		}
 	})
+
 	t.Run("destroy", func(t *testing.T) {
-		_t := NewTox(nil)
+		_t, err := NewTox(nil)
+		if err != nil {
+			t.Error(err)
+		}
 		_t.Kill()
 		if _t.toxcore != nil {
 			t.Error("must nil")
@@ -134,7 +181,10 @@ func TestCreate(t *testing.T) {
 }
 
 func TestBase(t *testing.T) {
-	_t := NewTox(nil)
+	_t, err := NewTox(nil)
+	if err != nil {
+		t.Error(err)
+	}
 	defer _t.Kill()
 
 	t.Run("name", func(t *testing.T) {
@@ -160,6 +210,7 @@ func TestBase(t *testing.T) {
 			t.Error("must failed", err)
 		}
 	})
+
 	t.Run("local status", func(t *testing.T) {
 		if _t.SelfGetStatusMessageSize() != 0 {
 			t.Error("must zero")
@@ -168,24 +219,25 @@ func TestBase(t *testing.T) {
 			t.Error("must empty", stm, err)
 		}
 		tmsg := "test status msg"
-		if ok, err := _t.SelfSetStatusMessage(tmsg); !ok || err != nil {
+		if err := _t.SelfSetStatusMessage(tmsg); err != nil {
 			t.Error("must ok", err)
 		}
 		if stm, err := _t.SelfGetStatusMessage(); err != nil || stm != tmsg {
 			t.Error("must =", stm, err)
 		}
 		tmsg = strings.Repeat("s", MAX_STATUS_MESSAGE_LENGTH)
-		if ok, err := _t.SelfSetStatusMessage(tmsg); !ok || err != nil {
+		if err := _t.SelfSetStatusMessage(tmsg); err != nil {
 			t.Error("must ok", err)
 		}
 		tmsg = strings.Repeat("s", MAX_STATUS_MESSAGE_LENGTH+1)
-		if ok, err := _t.SelfSetStatusMessage(tmsg); ok || err == nil {
+		if err := _t.SelfSetStatusMessage(tmsg); err == nil {
 			t.Error("must failed", err)
 		}
 		if _t.SelfGetConnectionStatus() != CONNECTION_NONE {
 			t.Error("must none")
 		}
 	})
+
 	t.Run("address/pubkey", func(t *testing.T) {
 		addr := _t.SelfGetAddress()
 		if len(addr) != ADDRESS_SIZE*2 {
@@ -199,42 +251,49 @@ func TestBase(t *testing.T) {
 			t.Error(addr)
 		}
 	})
+
 	t.Run("seckey", func(t *testing.T) {
 		seckey := _t.SelfGetSecretKey()
 		if len(seckey) != SECRET_KEY_SIZE*2 {
 			t.Error("size")
 		}
 	})
+
 	t.Run("nospam", func(t *testing.T) {
 	})
 }
 
 func TestBootstrap(t *testing.T) {
-	_t := NewTox(nil)
+	_t, err := NewTox(nil)
+	if err != nil {
+		t.Error(err)
+	}
 	defer _t.Kill()
 	port, _ := strconv.Atoi(bsnodes[1])
 
 	t.Run("success", func(t *testing.T) {
-		if ok, err := _t.Bootstrap(bsnodes[0], uint16(port), bsnodes[2]); !ok || err != nil {
-			t.Error("must ok", ok, err)
+		if err := _t.Bootstrap(bsnodes[0], uint16(port), bsnodes[2]); err != nil {
+			t.Error("must no error:", err)
 		}
 	})
+
 	t.Run("failed", func(t *testing.T) {
 		brkey := bsnodes[2]
 		brkey = "XYZAB" + bsnodes[2][3:]
-		if ok, err := _t.Bootstrap(bsnodes[0], uint16(port), brkey); ok || err == nil {
-			t.Error("must failed", ok, err)
+		if err := _t.Bootstrap(bsnodes[0], uint16(port), brkey); err == nil {
+			t.Error("must error:", err)
 		}
-		if ok, err := _t.Bootstrap("a.b.c.d", uint16(port), bsnodes[2]); ok || err == nil {
-			t.Error("must failed", ok, err)
+		if err := _t.Bootstrap("a.b.c.d", uint16(port), bsnodes[2]); err == nil {
+			t.Error("must error:", err)
 		}
 	})
+
 	t.Run("relay", func(t *testing.T) {
-		if ok, err := _t.AddTcpRelay(bsnodes[0], uint16(port), bsnodes[2]); !ok || err != nil {
-			t.Error("must ok", ok, err)
+		if err := _t.AddTcpRelay(bsnodes[0], uint16(port), bsnodes[2]); err != nil {
+			t.Error("must no error:", err)
 		}
-		if ok, err := _t.AddTcpRelay("a.b.c.d", uint16(port), bsnodes[2]); ok || err == nil {
-			t.Error("must failed", ok, err)
+		if err := _t.AddTcpRelay("a.b.c.d", uint16(port), bsnodes[2]); err == nil {
+			t.Error("must error:", err)
 		}
 	})
 }
@@ -244,11 +303,14 @@ type MiniTox struct {
 	stopch chan struct{}
 }
 
-func NewMiniTox() *MiniTox {
+func NewMiniTox() (*MiniTox, error) {
 	this := &MiniTox{}
-	this.t = NewTox(nil)
+	this.t, err = NewTox(nil)
+	if err != nil {
+		return nil, err
+	}
 	this.stopch = make(chan struct{}, 0)
-	return this
+	return this, nil
 }
 
 func (this *MiniTox) Iterate() {
@@ -263,16 +325,19 @@ func (this *MiniTox) Iterate() {
 	}
 }
 
-func (this *MiniTox) bootstrap() {
+func (this *MiniTox) bootstrap() error {
 	for idx := 0; idx < len(bsnodes)/3; idx++ {
 		port, err := strconv.Atoi(bsnodes[1+idx*3])
-		_, err = this.t.Bootstrap(bsnodes[0+idx*3], uint16(port), bsnodes[2+idx*3])
+		err = this.t.Bootstrap(bsnodes[0+idx*3], uint16(port), bsnodes[2+idx*3])
 		if err != nil {
+			return err
 		}
-		_, err = this.t.AddTcpRelay(bsnodes[0+idx*3], uint16(port), bsnodes[2+idx*3])
+		err = this.t.AddTcpRelay(bsnodes[0+idx*3], uint16(port), bsnodes[2+idx*3])
 		if err != nil {
+			return err
 		}
 	}
+	return nil
 }
 
 func (this *MiniTox) stop() {
@@ -308,9 +373,15 @@ func waitcond(cond func() bool, timeout int) {
 // login udp / login tcp
 func TestLogin(t *testing.T) {
 	t.Run("connect", func(t *testing.T) {
-		_t := NewMiniTox()
+		_t, err := NewMiniTox()
+		if err != nil {
+			t.Error(err)
+		}
 		defer _t.t.Kill()
-		_t.bootstrap()
+		err = _t.bootstrap()
+		if err != nil {
+			t.Error(err)
+		}
 		waitcond(func() bool {
 			if _t.t.IterationInterval() == 0 {
 				t.Error("why")
@@ -330,17 +401,26 @@ func TestLogin(t *testing.T) {
 func TestFriend(t *testing.T) {
 
 	t.Run("add friend", func(t *testing.T) {
-		t1 := NewMiniTox()
-		t2 := NewMiniTox()
+		t1, err := NewMiniTox()
+		if err != nil {
+			t.Error(err)
+			t.Fail()
+		}
+		t2, err := NewMiniTox()
+		if err != nil {
+			t.Error(err)
+			t.Fail()
+		}
 		defer t1.t.Kill()
 		defer t2.t.Kill()
 
-		t1.t.CallbackFriendRequest(func(_ *Tox, friendId, msg string, d interface{}) {
-			_, err := t1.t.FriendAddNorequest(friendId)
-			if err != nil {
-				t.Fail()
-			}
-		}, nil)
+		t1.t.CallbackFriendRequest(
+			func(_ *Tox, friendId, msg string, d interface{}) {
+				_, err := t1.t.FriendAddNorequest(friendId)
+				if err != nil {
+					t.Fail()
+				}
+			}, nil)
 
 		go t1.Iterate()
 		go t2.Iterate()
@@ -386,8 +466,14 @@ func TestFriend(t *testing.T) {
 	})
 
 	t.Run("friend status", func(t *testing.T) {
-		t1 := NewMiniTox()
-		t2 := NewMiniTox()
+		t1, err := NewMiniTox()
+		if err != nil {
+			t.Error(err)
+		}
+		t2, err := NewMiniTox()
+		if err != nil {
+			t.Error(err)
+		}
 		defer t1.t.Kill()
 		defer t2.t.Kill()
 
@@ -453,7 +539,7 @@ func TestFriend(t *testing.T) {
 		if t1size != len(t1name) {
 			t.Error(t1size, t1name)
 		}
-		_, err = t1.t.SelfSetStatusMessage("t1status")
+		err = t1.t.SelfSetStatusMessage("t1status")
 		if err != nil {
 			t.Error(err)
 		}
@@ -483,8 +569,14 @@ func TestFriend(t *testing.T) {
 	})
 
 	t.Run("friend message", func(t *testing.T) {
-		t1 := NewMiniTox()
-		t2 := NewMiniTox()
+		t1, err := NewMiniTox()
+		if err != nil {
+			t.Error(err)
+		}
+		t2, err := NewMiniTox()
+		if err != nil {
+			t.Error(err)
+		}
 		defer t1.t.Kill()
 		defer t2.t.Kill()
 
@@ -512,7 +604,7 @@ func TestFriend(t *testing.T) {
 			status, _ := t2.t.FriendGetConnectionStatus(friendNumber)
 			return status > CONNECTION_NONE
 		}, 100)
-		_, err := t2.t.FriendSendMessage(friendNumber, "hohoo")
+		_, err = t2.t.FriendSendMessage(friendNumber, "hohoo")
 		if err != nil {
 			t.Error(err)
 		}
@@ -529,8 +621,14 @@ func TestFriend(t *testing.T) {
 	})
 
 	t.Run("friend delete", func(t *testing.T) {
-		t1 := NewMiniTox()
-		t2 := NewMiniTox()
+		t1, err := NewMiniTox()
+		if err != nil {
+			t.Error(err)
+		}
+		t2, err := NewMiniTox()
+		if err != nil {
+			t.Error(err)
+		}
 		defer t1.t.Kill()
 		defer t2.t.Kill()
 
@@ -550,14 +648,14 @@ func TestFriend(t *testing.T) {
 		waitcond(func() bool {
 			return 1 == t1.t.SelfGetFriendListSize()
 		}, 100)
-		_, err = t2.t.FriendDelete(friendNumber)
+		err = t2.t.FriendDelete(friendNumber)
 		if err != nil {
 			t.Error(err)
 		}
 		if t2.t.FriendExists(friendNumber) {
 			t.Error("deleted friend appearence")
 		}
-		_, err = t2.t.FriendDelete(friendNumber)
+		err = t2.t.FriendDelete(friendNumber)
 		if err == nil {
 			t.Error("delete deleted friend should failed")
 		}
@@ -567,7 +665,10 @@ func TestFriend(t *testing.T) {
 // go test -v -covermode count -run Group
 func TestGroup(t *testing.T) {
 	t.Run("add del", func(t *testing.T) {
-		t1 := NewMiniTox()
+		t1, err := NewMiniTox()
+		if err != nil {
+			t.Error(err)
+		}
 		defer t1.t.Kill()
 
 		t1.t.CallbackFriendRequest(func(_ *Tox, friendId, msg string, d interface{}) {
@@ -685,8 +786,14 @@ func TestGroup(t *testing.T) {
 	})
 
 	t.Run("group invite", func(t *testing.T) {
-		t1 := NewMiniTox()
-		t2 := NewMiniTox()
+		t1, err := NewMiniTox()
+		if err != nil {
+			t.Error(err)
+		}
+		t2, err := NewMiniTox()
+		if err != nil {
+			t.Error(err)
+		}
 		defer t1.t.Kill()
 		defer t2.t.Kill()
 
@@ -770,8 +877,14 @@ func TestGroup(t *testing.T) {
 	})
 
 	t.Run("group message", func(t *testing.T) {
-		t1 := NewMiniTox()
-		t2 := NewMiniTox()
+		t1, err := NewMiniTox()
+		if err != nil {
+			t.Error(err)
+		}
+		t2, err := NewMiniTox()
+		if err != nil {
+			t.Error(err)
+		}
 		defer t1.t.Kill()
 		defer t2.t.Kill()
 
@@ -855,7 +968,10 @@ func TestAV(t *testing.T) {
 		if tv1, err := NewToxAV(nil); tv1 != nil {
 			t.Error("must nil", err)
 		}
-		t1 := NewMiniTox()
+		t1, err := NewMiniTox()
+		if err != nil {
+			t.Error(err)
+		}
 		tv1, err := NewToxAV(t1.t)
 		if err != nil {
 			t.Error(err, tv1)
@@ -865,8 +981,14 @@ func TestAV(t *testing.T) {
 
 // go test -v -run File
 func TestFile(t *testing.T) {
-	t1 := NewMiniTox()
-	t2 := NewMiniTox()
+	t1, err := NewMiniTox()
+	if err != nil {
+		t.Error(err)
+	}
+	t2, err := NewMiniTox()
+	if err != nil {
+		t.Error(err)
+	}
 
 	t1.t.CallbackFriendRequest(func(_ *Tox, friendId, msg string, d interface{}) {
 		t1.t.FriendAddNorequest(friendId)
@@ -959,7 +1081,10 @@ func TestFile(t *testing.T) {
 
 // go test -v -run Covers
 func TestCovers(t *testing.T) {
-	t1 := NewMiniTox()
+	t1, err := NewMiniTox()
+	if err != nil {
+		t.Error(err)
+	}
 	defer t1.t.Kill()
 
 	tv := reflect.ValueOf(t1.t)

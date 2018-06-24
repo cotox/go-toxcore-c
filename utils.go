@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
 	"reflect"
 	"unsafe"
@@ -21,6 +22,12 @@ func toxerr(errno interface{}) error {
 
 func toxerrf(f string, args ...interface{}) error {
 	return errors.New(fmt.Sprintf(f, args...))
+}
+
+func assert(condition bool, message string) {
+	if !condition {
+		log.Panic(message)
+	}
 }
 
 var toxdebug = false
